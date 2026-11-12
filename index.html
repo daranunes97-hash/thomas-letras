@@ -72,6 +72,15 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 .tb-gold{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.8);padding:2px 10px 2px 4px;border-radius:14px;font-size:17px}
 .tb-gold .mini{width:20px;height:20px}
 .tb-gold.pop,.tb-track.pop{animation:pop .5s ease}
+/* enfeites */
+#wCan{cursor:pointer;touch-action:manipulation}
+#wDeco{margin:10px 0 4px;min-height:66px;display:flex;align-items:center;justify-content:center;text-align:center}
+.goldbtn{background:#f2b82e;box-shadow:inset 0 -6px 0 rgba(0,0,0,.18),0 5px 0 #b07d10;color:#fff}
+.decohint{display:inline-flex;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:8px 14px;font-size:20px;box-shadow:0 4px 0 rgba(0,0,0,.12)}
+.decohint .big{font-size:36px}
+#decoGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}
+#decoGrid button{font-size:44px;height:74px;border:none;border-radius:12px;background:#fff6dc;box-shadow:0 4px 0 rgba(0,0,0,.12)}
+#decoGrid button:active{transform:translateY(2px)}
 /* escolher letras/sílabas */
 #pickTitle{margin:0 14px;text-align:center;font-size:22px;display:flex;align-items:center;justify-content:center;gap:10px}
 #pickGrid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:14px 14px 170px;align-content:start}
@@ -284,6 +293,7 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     <div id="wInfo"></div>
     <div class="wbody">
       <canvas id="wCan"></canvas>
+      <div id="wDeco"></div>
       <div id="wDone"></div>
     </div>
   </section>
@@ -342,6 +352,14 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     <div class="small" id="pVer" style="margin-top:10px"></div>
     <button id="pReset" class="danger">Zerar todo o progresso</button>
     <div class="row" style="margin-top:14px"><button id="pClose" class="sbtn" style="background:#5fae3e;color:#fff;border:none;font-size:18px">Fechar</button></div>
+  </div>
+</div>
+
+<div id="decoTray" class="overlay hidden" style="align-items:center">
+  <div class="panel" style="text-align:center;font-family:inherit;border-radius:16px;margin:auto 12px">
+    <h2>Escolha um enfeite</h2>
+    <div id="decoGrid"></div>
+    <div class="row"><button id="decoClose" class="sbtn">Depois</button></div>
   </div>
 </div>
 
@@ -447,7 +465,7 @@ function buildState(total) { let i = 0, rem = total; while (rem >= cellsOf(build
 
 /* ================= ESTADO ================= */
 const KEY = 'thomas-letras-v1';
-const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:'', goal:60}, days:{}, gold:0, goldPending:0});
+const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:'', goal:60}, days:{}, gold:0, goldPending:0, deco:[]});
 let S;
 try { S = Object.assign(defState(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = defState(); }
 ['letters','syl','words','read','write','pick','rounds','set','days'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
@@ -1020,34 +1038,92 @@ $('#eAgain').addEventListener('click', () => { if (G) beginRound(G.mode, G.sel);
 $('#eWorld').addEventListener('click', openWorld);
 
 /* ================= MUNDO ================= */
-function drawBuild(cv, b, filled, cell, ghost = .16) {
-  const cells = cellsOf(b), cols = Math.max(...b.map.map(r => r.length)), rows = b.map.length;
-  cv.width = cols * cell; cv.height = rows * cell;
+// cenário: 2 blocos de espaço dos lados e em cima, e uma faixa de grama embaixo (para os enfeites)
+const PADX = 2, PADT = 2;
+function sceneDims(b) { const cols = Math.max(...b.map.map(r => r.length)), rows = b.map.length; return {W: cols + PADX * 2, H: rows + PADT + 1}; }
+function drawBuild(cv, b, filled, cell, ghost = .16, bi = -1) {
+  const cells = cellsOf(b), d = sceneDims(b);
+  cv.width = d.W * cell; cv.height = d.H * cell;
   const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+  for (let x = 0; x < d.W; x++) g.drawImage(TXC.grass, x * cell, (d.H - 1) * cell, cell, cell);
   cells.forEach((c, i) => {
-    g.globalAlpha = i < filled ? 1 : ghost; g.drawImage(TXC[c.t], c.x * cell, c.y * cell, cell, cell);
-    if (i >= filled && ghost > 0) { g.globalAlpha = .5; g.strokeStyle = '#fff'; g.lineWidth = 1; g.strokeRect(c.x * cell + .5, c.y * cell + .5, cell - 1, cell - 1); }
+    const X = (c.x + PADX) * cell, Y = (c.y + PADT) * cell;
+    g.globalAlpha = i < filled ? 1 : ghost; g.drawImage(TXC[c.t], X, Y, cell, cell);
+    if (i >= filled && ghost > 0) { g.globalAlpha = .5; g.strokeStyle = '#fff'; g.lineWidth = 1; g.strokeRect(X + .5, Y + .5, cell - 1, cell - 1); }
   });
   g.globalAlpha = 1;
+  if (bi >= 0) {
+    g.font = `${Math.round(cell * 1.7)}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    S.deco.filter(o => o.b === bi).forEach(o => g.fillText(o.e, o.x * cv.width, o.y * cv.height));
+  }
 }
-function cellSize(b) { const cols = Math.max(...b.map.map(r => r.length)), rows = b.map.length; const maxW = Math.min(window.innerWidth * .9, 440), maxH = window.innerHeight * .46; return Math.max(8, Math.floor(Math.min(maxW / cols, maxH / rows))); }
+function cellSize(b) { const d = sceneDims(b); const maxW = Math.min(window.innerWidth * .92, 460), maxH = window.innerHeight * .44; return Math.max(8, Math.floor(Math.min(maxW / d.W, maxH / d.H))); }
+let shownBI = 0, shownFilled = 0, hand = null;
+function drawMain(bi, filled) { shownBI = bi; shownFilled = filled; drawBuild($('#wCan'), buildAt(bi), filled, cellSize(buildAt(bi)), .16, bi); }
 function drawDone(idx) {
   const box = $('#wDone'); box.innerHTML = '';
-  for (let i = Math.max(0, idx - 6); i < idx; i++) { const c = document.createElement('canvas'); drawBuild(c, buildAt(i), 999, 6, 0); box.appendChild(c); }
+  for (let i = Math.max(0, idx - 6); i < idx; i++) { const c = document.createElement('canvas'); drawBuild(c, buildAt(i), 999, 6, 0, i); box.appendChild(c); }
 }
+
+/* --- enfeites com os blocos de ouro --- */
+const DECOS = [['🌻','um girassol'],['🌷','uma tulipa'],['⭐','uma estrela'],['🎈','um balão'],['🍄','um cogumelo'],['🦋','uma borboleta'],['🐔','uma galinha'],['🐱','um gatinho'],['🐶','um cachorrinho'],['🏮','uma lanterna'],['💎','uma joia'],['🌈','um arco-íris']];
+const decoName = e => (DECOS.find(d => d[0] === e) || [e, 'o enfeite'])[1];
+const goldFree = () => Math.max(0, S.gold - S.deco.length);
+function renderDeco() {
+  const box = $('#wDeco'), free = goldFree();
+  if (hand) box.innerHTML = `<div class="decohint"><span class="big">${hand}</span> Toque onde quer colocar <button class="icon" id="decoCancel" style="width:44px;height:44px;font-size:20px">↩️</button></div>`;
+  else if (free > 0) box.innerHTML = `<button class="pbtn goldbtn" id="decoOpen">⭐ Enfeitar (${free})</button>`;
+  else if (!S.gold) box.innerHTML = `<div class="small" style="background:rgba(255,255,255,.75);border-radius:10px;padding:6px 12px;display:inline-block;font-size:15px">Jogue a meta do dia para ganhar blocos de ouro e enfeitar a casa ⭐</div>`;
+  else box.innerHTML = '';
+  const o = $('#decoOpen'); if (o) o.addEventListener('click', openTray);
+  const c = $('#decoCancel'); if (c) c.addEventListener('click', () => { hand = null; renderDeco(); hush(); say('Tudo bem, depois você coloca.'); });
+}
+function openTray() {
+  actx(); hush();
+  $('#decoGrid').innerHTML = DECOS.map(d => `<button data-e="${d[0]}">${d[0]}</button>`).join('');
+  $$('#decoGrid button').forEach(b => b.addEventListener('click', () => {
+    hand = b.dataset.e; $('#decoTray').classList.add('hidden'); renderDeco();
+    hush(); say(`${decoName(hand)}! Agora toque onde você quer colocar.`);
+  }));
+  $('#decoTray').classList.remove('hidden');
+  say('Escolha um enfeite para a sua casa!');
+}
+$('#decoClose').addEventListener('click', () => { hush(); $('#decoTray').classList.add('hidden'); });
+$('#wCan').addEventListener('click', e => {
+  actx();
+  const cv = $('#wCan'), r = cv.getBoundingClientRect();
+  const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+  if (hand) {
+    S.deco.push({b: shownBI, x: Math.min(.97, Math.max(.03, fx)), y: Math.min(.97, Math.max(.03, fy)), e: hand});
+    const name = decoName(hand); hand = null; save();
+    drawMain(shownBI, shownFilled); renderDeco(); sPlace(); setTimeout(sChime, 80); confetti(10);
+    hush(); say(`Ficou lindo! Você colocou ${name}.`);
+    return;
+  }
+  // tocar num enfeite já colocado: pega ele de novo para mudar de lugar
+  const cell = r.width / sceneDims(buildAt(shownBI)).W;
+  let best = null, bd = 1e9;
+  S.deco.forEach((o, i) => { if (o.b !== shownBI) return; const d = Math.hypot((o.x - fx) * r.width, (o.y - fy) * r.height); if (d < bd) { bd = d; best = i; } });
+  if (best !== null && bd < cell * 1.3) {
+    hand = S.deco[best].e; S.deco.splice(best, 1); save();
+    drawMain(shownBI, shownFilled); renderDeco(); sPop();
+    hush(); say('Toque onde você quer colocar agora.');
+  }
+});
 function worldInfo(st) {
   const left = st.size - st.filled, b = buildAt(st.idx);
-  $('#wInfo').innerHTML = `Construindo ${b.name}: <b>${st.filled}</b> de <b>${st.size}</b> blocos` + (S.gold ? `<div style="margin-top:6px">Blocos de ouro: ${Array.from({length: Math.min(S.gold, 12)}, () => `<span class="mini px" style="background-image:url(${TX.gold});margin:0 1px;vertical-align:middle"></span>`).join('')}${S.gold > 12 ? ' +' + (S.gold - 12) : ''}</div>` : '');
+  $('#wInfo').innerHTML = `Construindo ${b.name}: <b>${st.filled}</b> de <b>${st.size}</b> blocos`;
   return `Faltam ${left} blocos para terminar ${b.name}.`;
 }
 async function openWorld() {
   gen++; hush(); stopRec(); const g = gen; G = null; show('world');
   const from = Math.min(S.seen || 0, S.blocks), to = S.blocks;
   let st = buildState(from);
-  drawBuild($('#wCan'), buildAt(st.idx), st.filled, cellSize(buildAt(st.idx)));
-  drawDone(st.idx); worldInfo(st);
+  hand = null; drawMain(st.idx, st.filled);
+  drawDone(st.idx); worldInfo(st); renderDeco();
   if (from === to) {
     await say(S.blocks === 0 ? 'Aqui vamos construir uma casinha! Jogue para ganhar blocos.' : `Olha a sua construção, Thomas! ${worldInfo(st)}`);
+    if (g === gen && goldFree() > 0 && !hand) await say('Você tem blocos de ouro! Toque em Enfeitar para escolher um enfeite.');
     return;
   }
   await say('Vamos colocar os blocos!');
@@ -1057,7 +1133,7 @@ async function openWorld() {
     if (now.idx > prev.idx) {
       // terminou uma construção
       const b = buildAt(prev.idx);
-      drawBuild($('#wCan'), b, 999, cellSize(b)); sPlace();
+      drawMain(prev.idx, 999); sPlace();
       S.seen = k; save();
       await wait(300); sFanfare(); confetti(30); showPraise('Terminou!');
       $('#wInfo').innerHTML = `Você terminou ${b.name}! 🎉`;
@@ -1069,13 +1145,14 @@ async function openWorld() {
       sPlace();
       S.seen = k; save();
     }
-    drawBuild($('#wCan'), buildAt(now.idx), now.filled, cellSize(buildAt(now.idx)));
+    drawMain(now.idx, now.filled);
     worldInfo(now);
     await wait(260);
   }
   if (g !== gen) return;
   st = buildState(to);
   await say(worldInfo(st));
+  if (g === gen && goldFree() > 0 && !hand) await say('Você tem blocos de ouro! Toque em Enfeitar para escolher um enfeite.');
 }
 
 /* ================= REPETIR / INATIVIDADE ================= */
@@ -1120,7 +1197,7 @@ function renderParent() {
   $('#pDays').innerHTML = dkeys.length ? `<table style="width:100%;border-collapse:collapse;font-size:14px;color:#333">
     <tr style="text-align:left;border-bottom:1px solid #ddd"><th>Dia</th><th>Tempo</th><th>Meta</th><th>Ouro</th></tr>
     ${dkeys.map(k => { const d = S.days[k], [y, m, dd] = k.split('-'); return `<tr style="border-bottom:1px solid #f0f0f0"><td>${dd}/${m}</td><td>${fmt(d.sec)}</td><td>${d.sec >= goalSec() ? '✅' : '—'}</td><td>${d.gold || 0}</td></tr>`; }).join('')}
-  </table><div style="margin-top:4px">Total de blocos de ouro: ${S.gold}</div>` : 'Ainda não há registro de tempo.';
+  </table><div style="margin-top:4px">Total de blocos de ouro: ${S.gold} (${S.deco.length} já viraram enfeites na casa)</div>` : 'Ainda não há registro de tempo.';
   $('#pMic').checked = !!S.set.mic;
   $('#pMicInfo').innerHTML = !SR ? 'Este navegador não entende fala. O jogo usa o modo “✅ Eu li!”: ele lê em voz alta e depois o cachorrinho mostra a resposta.'
     : micBlocked ? '⚠️ Da última vez o microfone não funcionou. Pode estar sem permissão: toque no cadeado ao lado do endereço e permita o microfone, ou verifique a internet. Dentro da página do Claude ele nunca funciona; use o link do GitHub.'
@@ -1143,7 +1220,7 @@ $('#pGoal').addEventListener('change', e => { S.set.goal = +e.target.value; cons
 $('#pMic').addEventListener('change', e => { S.set.mic = e.target.checked; if (S.set.mic) micBlocked = false; save(); renderParent(); });
 let resetArm = 0;
 $('#pReset').addEventListener('click', e => {
-  if (Date.now() - resetArm < 4000) { const set = S.set, days = S.days, gold = S.gold; S = defState(); S.set = set; S.days = days; S.gold = gold; save(); updateCounter(); renderParent(); e.target.textContent = 'Progresso zerado'; resetArm = 0; return; }
+  if (Date.now() - resetArm < 4000) { const set = S.set, days = S.days, gold = S.gold, deco = S.deco; S = defState(); S.set = set; S.days = days; S.gold = gold; S.deco = deco; save(); updateCounter(); renderParent(); e.target.textContent = 'Progresso zerado'; resetArm = 0; return; }
   resetArm = Date.now(); e.target.textContent = 'Tem certeza? Toque de novo para zerar';
   setTimeout(() => { e.target.textContent = 'Zerar todo o progresso'; }, 4000);
 });
@@ -1170,6 +1247,7 @@ async function announceGold() {
   sFanfare(); confetti(26); showPraise('Bloco de ouro!');
   $('.tb-gold').classList.remove('pop'); void $('.tb-gold').offsetWidth; $('.tb-gold').classList.add('pop');
   await say(n > 1 ? `Uau, Thomas! Você ganhou ${n} blocos de ouro por jogar bastante hoje!` : 'Uau, Thomas! Você jogou bastante hoje e ganhou um bloco de ouro!');
+  await say('Vá em Minha casa e escolha um enfeite!');
 }
 setInterval(() => {
   if (!started || document.hidden || Date.now() - lastTouch > 120000) return;
@@ -1226,7 +1304,7 @@ $('#startBtn').addEventListener('click', () => {
 updateCounter();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · relógio do dia e bloco de ouro';
+const VERSAO = '12/nov · enfeites de ouro na casinha';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
