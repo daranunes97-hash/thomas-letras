@@ -78,6 +78,13 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 .answers{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px}
 .card .art span{background:rgba(255,255,255,.85);border-radius:12px;width:84px;height:84px;display:grid;place-items:center}
 .card .lbl{font-size:22px;padding:8px 6px 10px}
+#petBtn{border:none;background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:2px}
+#petBtn:active{transform:translateY(2px)}
+#petName{background:#fff;border-radius:10px;padding:2px 10px;font-size:16px;box-shadow:0 2px 0 rgba(0,0,0,.12);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#petName.ask{background:#ffe066;animation:bob 1.2s ease-in-out infinite}
+#nameBox .panel{border-radius:16px;margin:auto 12px;font-family:inherit;text-align:center}
+#nameBox canvas{width:110px;height:110px;image-rendering:pixelated}
+#nameIn{width:100%;font-size:32px;font-family:inherit;font-weight:900;text-align:center;padding:12px;border:4px solid #5fae3e;border-radius:12px;margin:12px 0;user-select:text}
 #gear{position:absolute;top:10px;right:12px;width:44px;height:44px;font-size:22px;opacity:.75}
 #gear .ring{position:absolute;inset:0;border-radius:8px;background:conic-gradient(#5fae3e var(--p,0%),transparent 0);opacity:.6;pointer-events:none}
 
@@ -183,7 +190,7 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
   <section id="home" class="screen">
     <button id="gear" class="icon" aria-label="Área dos pais (segure)">⚙️<span class="ring"></span></button>
     <div class="hero">
-      <canvas class="pet" id="petHome" width="12" height="12"></canvas>
+      <button id="petBtn" aria-label="Cachorrinho"><canvas class="pet" id="petHome" width="12" height="12"></canvas><span id="petName"></span></button>
       <div class="title">Mundo das<br>Letras</div>
     </div>
     <div class="cards">
@@ -256,6 +263,7 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
         <option value="3">Sempre 3</option>
       </select></label>
     <label><input type="checkbox" id="pFx"> Musiquinha de comemoração</label>
+    <div class="row"><button id="pPet">🐶 Mudar o nome do cachorrinho</button></div>
 
     <h3>Letras liberadas</h3>
     <div class="small">Verde = já sabe bem · amarelo = treinando · vermelho = está difícil. Números: acertos de primeira / erros.</div>
@@ -280,6 +288,17 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     <div class="small" id="pVer" style="margin-top:10px"></div>
     <button id="pReset" class="danger">Zerar todo o progresso</button>
     <div class="row" style="margin-top:14px"><button id="pClose" class="sbtn" style="background:#5fae3e;color:#fff;border:none;font-size:18px">Fechar</button></div>
+  </div>
+</div>
+
+<div id="nameBox" class="overlay hidden" style="align-items:center">
+  <div class="panel">
+    <canvas id="petName2" width="12" height="12"></canvas>
+    <h2>Qual é o meu nome?</h2>
+    <div class="small">Thomas, fale o nome para a mamãe escrever aqui.</div>
+    <input id="nameIn" maxlength="16" autocomplete="off" autocapitalize="words" spellcheck="false" placeholder="Nome">
+    <div class="row"><button id="nameHear" class="sbtn">🔊 Ouvir</button><button id="nameOk" class="sbtn" style="background:#5fae3e;color:#fff;border:none">✅ Pronto</button></div>
+    <div class="row"><button id="nameCancel" class="sbtn">Depois</button></div>
   </div>
 </div>
 
@@ -374,7 +393,7 @@ function buildState(total) { let i = 0, rem = total; while (rem >= cellsOf(build
 
 /* ================= ESTADO ================= */
 const KEY = 'thomas-letras-v1';
-const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, rounds:{letras:0, silabas:0, palavras:0, ler:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true}});
+const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, rounds:{letras:0, silabas:0, palavras:0, ler:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:''}});
 let S;
 try { S = Object.assign(defState(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = defState(); }
 ['letters','syl','words','read','rounds','set'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
@@ -412,13 +431,13 @@ const ORES = ['oreB','oreY','oreG','oreR'];
 $$('[data-tex]').forEach(el => el.style.backgroundImage = `url(${TX[el.dataset.tex]})`);
 $('#ground').style.backgroundImage = `url(${TX.grass})`;
 
-/* personagem: Pipoca, a cachorrinha de blocos */
+/* personagem: o cachorrinho de blocos (o Thomas escolhe o nome) */
 const PET = ['............','.dd......dd.','.ddd....ddd.','.dooooooood.','.oooooooooo.','.okkooookko.','.okwooookwo.','.oooooooooo.','.ooowkkwooo.','.oowwwwwwoo.','..owwppwwo..','...oooooo...'];
 const PETC = {o:'#e7a14a', d:'#8a5525', w:'#fff7ea', k:'#2b1d10', p:'#ff8fa8'};
 const CHEST = ['kkkkkkkkkkkk','kloooooooolk','kloooooooolk','kkkkkyykkkkk','kloooykooolk','kloooooooolk','kloooooooolk','kloooooooolk','kkkkkkkkkkkk'];
 const CHESTC = {k:'#3b2410', l:'#e0a050', o:'#b8722c', y:'#ffd84a'};
 function drawMap(cv, map, pal) { const g = cv.getContext('2d'); g.clearRect(0,0,cv.width,cv.height); map.forEach((row, y) => [...row].forEach((c, x) => { if (pal[c]) { g.fillStyle = pal[c]; g.fillRect(x, y, 1, 1); } })); }
-['#petHome','#petGame','#petStart'].forEach(s => drawMap($(s), PET, PETC));
+['#petHome','#petGame','#petStart','#petName2'].forEach(s => drawMap($(s), PET, PETC));
 drawMap($('#chest'), CHEST, CHESTC);
 function petAnim(cls) { const p = $('#petGame'); p.classList.remove('hop','tilt'); void p.offsetWidth; p.classList.add(cls); }
 
@@ -954,7 +973,7 @@ function renderParent() {
   $('#pWords').innerHTML = ws.length ? ws.map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : 'Ainda não jogou palavras.';
   $('#pVer').textContent = 'Versão: ' + VERSAO;
   $('#pMic').checked = !!S.set.mic;
-  $('#pMicInfo').innerHTML = !SR ? 'Este navegador não entende fala. O jogo usa o modo “✅ Eu li!”: ele lê em voz alta e depois a Pipoca mostra a resposta.'
+  $('#pMicInfo').innerHTML = !SR ? 'Este navegador não entende fala. O jogo usa o modo “✅ Eu li!”: ele lê em voz alta e depois o cachorrinho mostra a resposta.'
     : micBlocked ? 'O microfone foi bloqueado nesta página. Por isso, agora o jogo está no modo “✅ Eu li!”.'
     : 'Precisa de internet e da permissão do microfone. No Android, o Google transforma a fala em texto. O jogo é tolerante: se não entender, ajuda em etapas e nunca diz “errado”.';
   const rs = Object.entries(S.read.st);
@@ -963,6 +982,7 @@ function renderParent() {
   $('#pSum').innerHTML = `Blocos ganhos: ${S.blocks} · Construções terminadas: ${bs.idx}<br>Rodadas: Letras ${S.rounds.letras} · Sílabas ${S.rounds.silabas} · Palavras ${S.rounds.palavras} · Ler ${S.rounds.ler}<br>Uma letra/sílaba nova é liberada sozinha depois de 2 rodadas seguidas com 4 ou mais acertos de primeira.`;
 }
 function openParent() { hush(); renderParent(); $('#parent').classList.remove('hidden'); }
+$('#pPet').addEventListener('click', () => { $('#parent').classList.add('hidden'); openNameBox(); });
 $('#pClose').addEventListener('click', () => { $('#parent').classList.add('hidden'); });
 $('#pRate').addEventListener('input', e => { S.set.rate = +e.target.value; save(); $('#pRateV').textContent = Math.round(S.set.rate * 100) + '%'; });
 $('#pTest').addEventListener('click', () => { actx(); hush(); say('Oi, Thomas! Bê mais a, dá ba!'); });
@@ -980,18 +1000,46 @@ $('#pReset').addEventListener('click', e => {
   setTimeout(() => { e.target.textContent = 'Zerar todo o progresso'; }, 4000);
 });
 
+/* ================= NOME DO CACHORRINHO ================= */
+const cleanName = t => t.replace(/[<>&"]/g, '').replace(/\s+/g, ' ').trim().slice(0, 16);
+function renderPetName() {
+  const el = $('#petName');
+  el.textContent = S.set.pet || 'Meu nome? 🐾';
+  el.classList.toggle('ask', !S.set.pet);
+}
+function openNameBox() { hush(); $('#nameIn').value = S.set.pet || ''; $('#nameBox').classList.remove('hidden'); say('Qual vai ser o meu nome? Fale para a mamãe escrever!'); }
+$('#petBtn').addEventListener('click', () => {
+  actx();
+  if (!S.set.pet) return openNameBox();
+  const p = $('#petHome'); p.classList.remove('hop'); void p.offsetWidth; p.classList.add('hop');
+  hush(); say(`Au au! Eu sou o ${S.set.pet}!`);
+});
+$('#nameHear').addEventListener('click', () => { const n = cleanName($('#nameIn').value); hush(); say(n ? `${n}!` : 'Escreva um nome primeiro.'); });
+$('#nameCancel').addEventListener('click', () => { hush(); $('#nameBox').classList.add('hidden'); });
+$('#nameOk').addEventListener('click', async () => {
+  const n = cleanName($('#nameIn').value);
+  if (!n) { hush(); say('Escreva um nome primeiro.'); return; }
+  S.set.pet = n; save(); renderPetName();
+  $('#nameBox').classList.add('hidden');
+  const p = $('#petHome'); p.classList.remove('hop'); void p.offsetWidth; p.classList.add('hop');
+  sFanfare(); confetti(); showPraise(n + '!');
+  hush(); await say(`Oba! Agora meu nome é ${n}! Obrigado, Thomas! Vamos jogar?`);
+});
+
 /* ================= COMEÇO ================= */
 $('#startBtn').addEventListener('click', () => {
   actx(); hush();
   $('#start').remove();
   goHome(false);
   // aquece a voz (iOS precisa de um toque antes de falar)
-  say(S.blocks ? 'Oi, Thomas! Que bom te ver! Escolha um jogo.' : 'Oi, Thomas! Eu sou a Pipoca. Vamos aprender as letras e construir uma casa juntos? Escolha um jogo.');
+  renderPetName();
+  if (!S.set.pet) say('Oi, Thomas! Eu sou um cachorrinho de blocos, mas ainda não tenho nome! Toque em mim para escolher o meu nome.');
+  else say(S.blocks ? `Oi, Thomas! É o ${S.set.pet}! Que bom te ver! Escolha um jogo.` : `Oi, Thomas! Meu nome é ${S.set.pet}. Vamos aprender as letras e construir uma casa juntos? Escolha um jogo.`);
 });
 updateCounter();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · sílaba falada letra por letra';
+const VERSAO = '12/nov · o Thomas escolhe o nome do cachorrinho';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
