@@ -321,6 +321,13 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     <label>Velocidade da voz: <b id="pRateV"></b>
       <input type="range" id="pRate" min="0.6" max="1.1" step="0.05"></label>
     <div class="row"><button id="pTest">🔊 Testar voz</button></div>
+    <label>Voz do cachorrinho
+      <select id="pPetPitch">
+        <option value="1.3">Normal</option>
+        <option value="1.7">Fofinha (cachorrinho)</option>
+        <option value="2">Bem fininha</option>
+      </select></label>
+    <div class="row"><button id="pTestPet">🐶 Testar voz do cachorrinho</button></div>
     <div class="small" id="pVoice"></div>
     <label>Quantos blocos para escolher
       <select id="pOpts">
@@ -548,7 +555,7 @@ function buildState(total) {
 
 /* ================= ESTADO ================= */
 const KEY = 'thomas-letras-v1';
-const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:'', goal:60}, days:{}, gold:0, goldPending:0, deco:[], bseq:[]});
+const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:'', goal:60, petPitch:1.7}, days:{}, gold:0, goldPending:0, deco:[], bseq:[]});
 let S;
 try { S = Object.assign(defState(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = defState(); }
 ['letters','syl','words','read','write','pick','rounds','set','days'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
@@ -623,11 +630,11 @@ function pickVoice() {
   voice = pt.find(v => /google/i.test(v.name)) || pt.find(v => /luciana|francisca|thalita|maria|female|feminina/i.test(v.name)) || pt[0] || null;
 }
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-function say(text) {
+function say(text, pet = false) {
   return new Promise(res => {
     if (!('speechSynthesis' in window)) { setTimeout(res, 400 + text.length * 55); return; }
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'pt-BR'; if (voice) u.voice = voice; u.rate = S.set.rate; u.pitch = 1.1;
+    u.lang = 'pt-BR'; if (voice) u.voice = voice; u.rate = pet ? Math.min(1.3, S.set.rate * 1.08) : S.set.rate; u.pitch = pet ? (+S.set.petPitch || 1.7) : 1.1;
     let done = false; const fin = () => { if (!done) { done = true; res(); } };
     u.onend = fin; u.onerror = fin;
     setTimeout(fin, 2000 + text.length * 110 / S.set.rate);
@@ -649,6 +656,19 @@ function tone(f, start, dur, vol = .1, type = 'sine') {
 const sChime = () => { tone(523,0,.35); tone(659,.1,.35); tone(784,.2,.55); };
 const sPop = () => { tone(240,0,.1,.07,'triangle'); tone(360,.03,.09,.05,'triangle'); };
 const sPlace = () => tone(200,0,.09,.05,'triangle');
+// latidinho de cachorro pequeno ("au au"), feito com som sintetizado, bem baixinho
+function sBark() {
+  const a = actx(); if (!a || !S.set.fx) return;
+  [0, .2].forEach((st, k) => {
+    const o = a.createOscillator(), f = a.createBiquadFilter(), g = a.createGain(), t = a.currentTime + st;
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(k ? 980 : 900, t); o.frequency.exponentialRampToValueAtTime(k ? 480 : 430, t + .11);
+    f.type = 'lowpass'; f.frequency.value = 1600; f.Q.value = 6;
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.09, t + .015); g.gain.exponentialRampToValueAtTime(.0001, t + .13);
+    o.connect(f).connect(g).connect(a.destination); o.start(t); o.stop(t + .16);
+  });
+}
+// fala do cachorrinho: latidinho + voz de cachorrinho
+async function petSay(text) { sBark(); await wait(380); return say(text, true); }
 const sFanfare = () => { [523,659,784,1047].forEach((f,i) => tone(f, i*.14, .45, .1)); tone(784,.7,.25,.1); tone(1047,.85,.8,.11); };
 
 /* ================= EFEITOS ================= */
@@ -873,7 +893,9 @@ async function readWin(g) {
   const i = Math.floor(Math.random() * PRAISE.length);
   showPraise(first ? 'Você leu!' : 'Isso!');
   G.q++; renderProg();
-  await say(`${cur.word.toLowerCase()}! ${first ? 'Você leu sozinho! ' : ''}${PRAISE[i]}`);
+  await say(`${cur.word.toLowerCase()}!`);
+  if (g !== gen) return;
+  await petSay(`${first ? 'Você leu sozinho! ' : ''}${PRAISE[i]}`);
   if (g !== gen) return;
   await wait(400);
   if (g === gen) nextQ();
@@ -987,7 +1009,9 @@ async function pickWrite(btn, val) {
   const i = Math.floor(Math.random() * PRAISE.length);
   showPraise(c.word);
   G.q++; renderProg();
-  await say(`${sylParts(syl)} ${c.syls.map(saySyl).join('... ')}... ${c.word.toLowerCase()}! Você escreveu ${c.word.toLowerCase()}! ${PRAISE[i]}`);
+  await say(`${sylParts(syl)} ${c.syls.map(saySyl).join('... ')}... ${c.word.toLowerCase()}!`);
+  if (g !== gen) return;
+  await petSay(`Você escreveu ${c.word.toLowerCase()}! ${PRAISE[i]}`);
   if (g !== gen) return;
   await wait(400);
   if (g === gen) nextQ();
@@ -1029,21 +1053,19 @@ async function miss(btn, val) {
   G.tries++; stat(G.mode === 'letras' ? 'letters' : G.mode === 'silabas' ? 'syl' : 'words', G.cur.key).err++; save();
   btn.classList.remove('wiggle'); void btn.offsetWidth; btn.classList.add('wiggle');
   petAnim('tilt');
-  const right = correctBtn();
-  if (right) { right.classList.remove('hint1','hint2'); right.classList.add(G.tries >= 2 ? 'hint2' : 'hint1'); }
+  // nenhum jogo mostra a resposta: a opção errada que ele tocou fica apagada, e a voz repete só a pergunta
+  btn.classList.add('off');
   G.lock = true; setTimeout(() => { if (g === gen && G) G.lock = false; }, 450);
   hush();
-  let line;
-  if (G.tries >= 2) line = 'É esse aqui, ó! ';
-  else line = '';
-  if (G.mode === 'letras') line += G.tries >= 2 ? `A letra ${LN[G.cur.answer]}.` : `Essa é a letra ${LN[val]}. Procure a letra ${LN[G.cur.answer]}.`;
+  let line = '';
+  if (G.mode === 'letras') line = `Essa é a letra ${LN[val]}. Procure a letra ${LN[G.cur.answer]}.`;
   else if (G.cur.type === 'craft') {
     const made = G.cur.c + val;
     const cres = $('#cres .face'); if (cres) { cres.innerHTML = `<i class="ghost">${made}</i>`; }
-    line += G.tries >= 2 ? `${LN[G.cur.c]} mais ${VS[G.cur.v]} dá ${saySyl(G.cur.s)}.` : `${LN[G.cur.c]} mais ${VS[val]} dá ${saySyl(made)}. Nós queremos ${saySyl(G.cur.s)}.`;
+    line = `${LN[G.cur.c]} mais ${VS[val]} dá ${saySyl(made)}. Nós queremos ${saySyl(G.cur.s)}.`;
     setTimeout(() => { if (g === gen && cres && G && G.tries > 0) cres.innerHTML = '?'; }, 2200);
   }
-  else line += G.tries >= 2 ? `${saySyl(G.cur.s)}.` : `Essa é ${saySyl(val)}. Procure ${saySyl(G.cur.s)}.`;
+  else line = `Essa é ${saySyl(val)}. Procure ${saySyl(G.cur.s)}.`;
   await say(line);
 }
 
@@ -1067,7 +1089,9 @@ async function win(btn) {
   const i = Math.floor(Math.random() * PRAISE.length);
   showPraise(first ? PRAISE_TXT[i] : 'Isso! Achou!');
   G.q++; renderProg();
-  await say(line + ' ' + (first ? PRAISE[i] : 'Isso! Você achou!'));
+  await say(line);
+  if (g !== gen) return;
+  await petSay(first ? PRAISE[i] : 'Isso! Você achou!');
   if (g !== gen) return;
   await wait(350);
   if (g === gen) nextQ();
@@ -1078,14 +1102,14 @@ async function pickWord(btn, val) {
   if (val !== need) {
     G.tries++; cur.hadErr = true; stat('words', cur.word).err++; save();
     btn.classList.remove('wiggle'); void btn.offsetWidth; btn.classList.add('wiggle'); petAnim('tilt');
-    const right = correctBtn(); if (right) { right.classList.remove('hint1','hint2'); right.classList.add(G.tries >= 2 ? 'hint2' : 'hint1'); }
+    btn.classList.add('off');
     G.lock = true; setTimeout(() => { if (g === gen && G) G.lock = false; }, 450);
     hush();
-    await say(G.tries >= 2 ? `É esse aqui, ó! ${saySyl(need)}.` : `Essa é ${saySyl(val)}. Precisamos de ${saySyl(need)}.`);
+    await say(`Essa é ${saySyl(val)}. Precisamos de ${saySyl(need)}.`);
     return;
   }
   hush(); sPlace();
-  $$('#opts .blk').forEach(b => b.classList.remove('hint1','hint2'));
+  $$('#opts .blk').forEach(b => b.classList.remove('hint1','hint2','off'));
   btn.classList.add('used');
   const slot = $(`.wslot[data-i="${cur.idx}"]`);
   slot.textContent = val; slot.classList.remove('next'); slot.classList.add('filled','pop');
@@ -1107,7 +1131,9 @@ async function pickWord(btn, val) {
   const i = Math.floor(Math.random() * PRAISE.length);
   showPraise(cur.word);
   G.q++; renderProg();
-  await say(`${cur.syls.map(saySyl).join('... ')}... ${cur.word.toLowerCase()}! ${PRAISE[i]}`);
+  await say(`${cur.syls.map(saySyl).join('... ')}... ${cur.word.toLowerCase()}!`);
+  if (g !== gen) return;
+  await petSay(PRAISE[i]);
   if (g !== gen) return;
   await wait(350);
   if (g === gen) nextQ();
@@ -1125,7 +1151,7 @@ async function endRound() {
   $('#eGain').textContent = G.earned;
   $('#eNew').innerHTML = unlocked ? `${kind === 'letra' ? 'Letra nova!' : kind === 'jogo' ? 'Jogo novo: Escrever!' : 'Sílabas novas!'}<div class="blk px pop" style="background-image:url(${TX.oreY})"><span class="face">${unlocked}</span></div>` : '';
   sFanfare(); confetti();
-  await say(`Parabéns, Thomas! Você ganhou ${G.earned} blocos!`);
+  await petSay(`Parabéns, Thomas! Você ganhou ${G.earned} blocos!`);
   if (g !== gen) return;
   if (unlocked && kind === 'jogo') await say('E sabe o que mais? Você está lendo tão bem que ganhou um jogo novo: Escrever! Agora você vai escrever as palavras que escutar!');
   else if (unlocked) await say(kind === 'letra' ? `E ganhou uma letra nova: ${LN[unlocked]}!` : `E agora vamos treinar com o ${LN[unlocked]}: ${VOW.filter(v => !SKIP[unlocked + v]).map(v => saySyl(unlocked + v)).join(', ')}!`);
@@ -1479,6 +1505,7 @@ function renderParent() {
   const ws = Object.entries(S.words.st);
   $('#pWords').innerHTML = ws.length ? ws.map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : 'Ainda não jogou palavras.';
   $('#pVer').textContent = 'Versão: ' + VERSAO;
+  $('#pPetPitch').value = String(S.set.petPitch || 1.7);
   $('#pGoal').value = String(S.set.goal || 60);
   const fmt = sec => { const m = Math.floor(sec / 60); return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`; };
   const dkeys = Object.keys(S.days).sort().reverse().slice(0, 30);
@@ -1502,6 +1529,8 @@ $('#pPet').addEventListener('click', () => { $('#parent').classList.add('hidden'
 $('#pClose').addEventListener('click', () => { $('#parent').classList.add('hidden'); });
 $('#pRate').addEventListener('input', e => { S.set.rate = +e.target.value; save(); $('#pRateV').textContent = Math.round(S.set.rate * 100) + '%'; });
 $('#pTest').addEventListener('click', () => { actx(); hush(); say('Oi, Thomas! Bê mais a, dá ba!'); });
+$('#pPetPitch').addEventListener('change', e => { S.set.petPitch = +e.target.value; save(); actx(); hush(); petSay('Oi, Thomas! Muito bem!'); });
+$('#pTestPet').addEventListener('click', () => { actx(); hush(); petSay(`Oi, Thomas! ${S.set.pet ? 'Eu sou o ' + S.set.pet + '!' : 'Muito bem!'}`); });
 $('#pOpts').addEventListener('change', e => { S.set.opts = e.target.value; save(); });
 $('#pFx').addEventListener('change', e => { S.set.fx = e.target.checked; save(); });
 $('#pGoal').addEventListener('change', e => { S.set.goal = +e.target.value; const t = today(); t.gold = Math.max(t.gold, Math.floor(t.sec / goalSec())); save(); renderTime(); renderParent(); });
@@ -1559,12 +1588,12 @@ function renderPetName() {
   el.textContent = S.set.pet || 'Meu nome? 🐾';
   el.classList.toggle('ask', !S.set.pet);
 }
-function openNameBox() { hush(); $('#nameIn').value = S.set.pet || ''; $('#nameBox').classList.remove('hidden'); say('Qual vai ser o meu nome? Fale para a mamãe escrever!'); }
+function openNameBox() { hush(); $('#nameIn').value = S.set.pet || ''; $('#nameBox').classList.remove('hidden'); petSay('Qual vai ser o meu nome? Fale para a mamãe escrever!'); }
 $('#petBtn').addEventListener('click', () => {
   actx();
   if (!S.set.pet) return openNameBox();
   const p = $('#petHome'); p.classList.remove('hop'); void p.offsetWidth; p.classList.add('hop');
-  hush(); say(`Au au! Eu sou o ${S.set.pet}!`);
+  hush(); petSay(`Eu sou o ${S.set.pet}!`);
 });
 $('#nameHear').addEventListener('click', () => { const n = cleanName($('#nameIn').value); hush(); say(n ? `${n}!` : 'Escreva um nome primeiro.'); });
 $('#nameCancel').addEventListener('click', () => { hush(); $('#nameBox').classList.add('hidden'); });
@@ -1575,7 +1604,7 @@ $('#nameOk').addEventListener('click', async () => {
   $('#nameBox').classList.add('hidden');
   const p = $('#petHome'); p.classList.remove('hop'); void p.offsetWidth; p.classList.add('hop');
   sFanfare(); confetti(); showPraise(n + '!');
-  hush(); await say(`Oba! Agora meu nome é ${n}! Obrigado, Thomas! Vamos jogar?`);
+  hush(); await petSay(`Oba! Agora meu nome é ${n}! Obrigado, Thomas! Vamos jogar?`);
 });
 
 /* ================= COMEÇO ================= */
@@ -1586,8 +1615,8 @@ $('#startBtn').addEventListener('click', () => {
   goHome(false);
   // aquece a voz (iOS precisa de um toque antes de falar)
   renderPetName();
-  if (!S.set.pet) say('Oi, Thomas! Eu sou um cachorrinho de blocos, mas ainda não tenho nome! Toque em mim para escolher o meu nome.');
-  else say(S.blocks ? `Oi, Thomas! É o ${S.set.pet}! Que bom te ver! Escolha um jogo.` : `Oi, Thomas! Meu nome é ${S.set.pet}. Vamos aprender as letras e construir uma casa juntos? Escolha um jogo.`);
+  if (!S.set.pet) petSay('Oi, Thomas! Eu sou um cachorrinho de blocos, mas ainda não tenho nome! Toque em mim para escolher o meu nome.');
+  else petSay(S.blocks ? `Oi, Thomas! É o ${S.set.pet}! Que bom te ver! Escolha um jogo.` : `Oi, Thomas! Meu nome é ${S.set.pet}. Vamos aprender as letras e construir uma casa juntos? Escolha um jogo.`);
 });
 updateCounter();
 
@@ -1625,7 +1654,7 @@ updateCounter();
 })();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · Escrever sem mostrar a resposta';
+const VERSAO = '12/nov · voz de cachorrinho e nenhum jogo mostra a resposta';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
