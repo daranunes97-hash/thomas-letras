@@ -72,8 +72,19 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 .tb-gold{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.8);padding:2px 10px 2px 4px;border-radius:14px;font-size:17px}
 .tb-gold .mini{width:20px;height:20px}
 .tb-gold.pop,.tb-track.pop{animation:pop .5s ease}
+/* construções */
+#wCan{touch-action:none}
+#wDone{gap:8px}
+.bchip{border:none;border-radius:10px;background:rgba(255,255,255,.75);font-size:28px;width:52px;height:52px;position:relative;box-shadow:0 3px 0 rgba(0,0,0,.12)}
+.bchip.on{background:#fff;outline:3px solid #5fae3e}
+.bchip small{position:absolute;right:-4px;bottom:-4px;font-size:16px}
+#bpGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 14px;max-height:60vh;overflow:auto}
+#bpGrid button{border:none;border-radius:12px;background:#f3f7ee;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;box-shadow:0 3px 0 rgba(0,0,0,.12)}
+#bpGrid button.on{background:#d8f2cc;outline:3px solid #5fae3e}
+#bpGrid .e{font-size:40px;line-height:1.1}
+#bpGrid .n{font-size:15px;font-weight:800}
+#bpGrid .c{font-size:11px;color:#777;font-weight:600}
 /* enfeites */
-#wCan{cursor:pointer;touch-action:manipulation}
 #wDeco{margin:10px 0 4px;min-height:66px;display:flex;align-items:center;justify-content:center;text-align:center}
 .goldbtn{background:#f2b82e;box-shadow:inset 0 -6px 0 rgba(0,0,0,.18),0 5px 0 #b07d10;color:#fff}
 .decohint{display:inline-flex;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:8px 14px;font-size:20px;box-shadow:0 4px 0 rgba(0,0,0,.12)}
@@ -355,6 +366,14 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
   </div>
 </div>
 
+<div id="buildPick" class="overlay hidden" style="align-items:center">
+  <div class="panel" style="text-align:center;font-family:inherit;border-radius:16px;margin:auto 12px">
+    <h2>O que vamos construir? 🔨</h2>
+    <div id="bpGrid"></div>
+    <button id="bpGo" class="pbtn" style="width:100%;font-size:24px">▶ Construir!</button>
+  </div>
+</div>
+
 <div id="decoTray" class="overlay hidden" style="align-items:center">
   <div class="panel" style="text-align:center;font-family:inherit;border-radius:16px;margin:auto 12px">
     <h2>Escolha um enfeite</h2>
@@ -415,60 +434,137 @@ const WORDS = [
 const PRAISE = ['Muito bem, Thomas!','Isso aí!','Você conseguiu!','Mandou bem, Thomas!','Uau, que legal!','Perfeito!','Muito bom, Thomas!','Boa!'];
 const PRAISE_TXT = ['Muito bem!','Isso aí!','Conseguiu!','Mandou bem!','Uau!','Perfeito!','Muito bom!','Boa!'];
 
-/* construções do mundo (de baixo para cima) */
-const CH = {s:'stone',w:'plank',G:'glass',D:'door',r:'roof',l:'log',f:'leaves',d:'dirt',g:'grass'};
-const BUILDS = [
-  {name:'a casinha', map:[
-    '...rrr...',
-    '..rrrrr..',
-    '.rrrrrrr.',
-    'rrrrrrrrr',
-    '.wwwwwww.',
-    '.wGwwwGw.',
-    '.wwwDwww.',
-    '.wwwDwww.',
-    'sssssssss']},
-  {name:'a árvore', map:[
-    '..fff..',
-    '.fffff.',
-    'fffffff',
-    'fffffff',
-    '.fflff.',
-    '...l...',
-    '...l...',
-    '...l...',
-    'ggggggg']},
-  {name:'a torre', map:[
-    's.s.s',
-    'sssss',
-    '.sGs.',
-    '.sss.',
-    '.sGs.',
-    '.sss.',
-    '.sDs.',
-    '.sDs.',
-    'sssss']},
-  {name:'a fazendinha', map:[
-    '.....rr.....',
-    '....rrrr....',
-    '...rrrrrr...',
-    '..wwwwwwww..',
-    '..wGwwwwGw..',
-    '..wwwDDwww..',
-    'f.wwwDDwww.f',
-    'l.wwwDDwww.l',
-    'gggggggggggg']}
-];
-const cellsOf = b => { const out = []; for (let y = b.map.length - 1; y >= 0; y--) for (let x = 0; x < b.map[y].length; x++) { const c = b.map[y][x]; if (c !== '.') out.push({x, y, t: CH[c]}); } return out; };
-const buildAt = i => BUILDS[i % BUILDS.length];
-function buildState(total) { let i = 0, rem = total; while (rem >= cellsOf(buildAt(i)).length) { rem -= cellsOf(buildAt(i)).length; i++; } return {idx: i, filled: rem, size: cellsOf(buildAt(i)).length}; }
+/* ================= CONSTRUÇÕES (3D, de blocos) ================= */
+// Cada construção é uma lista de blocos {x, y, z, tipo}. Os blocos entram de baixo para cima.
+const VOX = {}, VOX_IDS = [];
+function V(id, name, emoji, ground, fn) {
+  const m = new Map();
+  const put = (x, y, z, t) => m.set(x + ',' + y + ',' + z, {x, y, z, t});
+  fn(put);
+  const cells = [...m.values()];
+  const xs = cells.map(c => c.x), zs = cells.map(c => c.z);
+  const cx = Math.floor((Math.min(...xs) + Math.max(...xs)) / 2), cz = Math.floor((Math.min(...zs) + Math.max(...zs)) / 2);
+  cells.forEach(c => { c.x -= cx; c.z -= cz; });
+  cells.sort((a, b) => a.y - b.y || b.z - a.z || a.x - b.x);
+  const X = cells.map(c => c.x), Y = cells.map(c => c.y), Z = cells.map(c => c.z);
+  VOX[id] = {id, name, emoji, ground, cells, size: cells.length,
+    minX: Math.min(...X), maxX: Math.max(...X), minZ: Math.min(...Z), maxZ: Math.max(...Z), h: Math.max(...Y) + 1};
+  VOX_IDS.push(id);
+}
+const ringP = (p, x0, z0, x1, z1, y, t) => { for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) if (x === x0 || x === x1 || z === z0 || z === z1) p(x, y, z, t); };
+const boxP = (p, x0, y0, z0, x1, y1, z1, t) => { for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) p(x, y, z, t); };
+// telhado em duas águas ao longo de x; paredes das pontas em "fill"
+function gable(p, W, D, y0, t, fill) {
+  for (let k = 0; ; k++) {
+    const z1 = k - 1, z2 = D - k; if (z1 > z2) break;
+    for (let x = -1; x <= W; x++) { p(x, y0 + k, z1, t); p(x, y0 + k, z2, t); }
+    for (let z = Math.max(0, z1 + 1); z <= Math.min(D - 1, z2 - 1); z++) { p(0, y0 + k, z, fill); p(W - 1, y0 + k, z, fill); }
+  }
+}
+
+V('boneco', 'o boneco de neve', '⛄', 'grass', p => {
+  boxP(p, -1, 0, -1, 1, 1, 1, 'white');
+  [[0,0],[1,0],[-1,0],[0,1],[0,-1]].forEach(([x, z]) => { p(x, 2, z, 'white'); p(x, 3, z, 'white'); });
+  p(0, 4, 0, 'white');
+  p(0, 3, -2, 'orange'); p(0, 1, -2, 'coal'); p(0, 0, -2, 'coal');
+  p(0, 5, 0, 'coal');
+});
+V('casinha', 'a casinha', '🏠', 'grass', p => {
+  const W = 5, D = 4;
+  for (let y = 0; y <= 1; y++) ringP(p, 0, 0, W - 1, D - 1, y, 'plank');
+  p(2, 0, 0, 'door'); p(2, 1, 0, 'door');
+  p(1, 1, 0, 'glass'); p(3, 1, 0, 'glass'); p(0, 1, 1, 'glass'); p(0, 1, 2, 'glass'); p(W - 1, 1, 1, 'glass'); p(W - 1, 1, 2, 'glass');
+  gable(p, W, D, 2, 'roof', 'plank');
+});
+V('arvore', 'a árvore', '🌳', 'grass', p => {
+  for (let y = 3; y <= 4; y++) for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) if (!(Math.abs(x) === 2 && Math.abs(z) === 2)) p(x, y, z, 'leaves');
+  boxP(p, -1, 5, -1, 1, 5, 1, 'leaves');
+  [[0,0],[1,0],[-1,0],[0,1],[0,-1]].forEach(([x, z]) => p(x, 6, z, 'leaves'));
+  for (let y = 0; y < 4; y++) p(0, y, 0, 'log');
+});
+V('foguete', 'o foguete', '🚀', 'grass', p => {
+  for (let y = 1; y <= 6; y++) [[0,0],[1,0],[-1,0],[0,1],[0,-1]].forEach(([x, z]) => p(x, y, z, 'white'));
+  p(0, 4, -1, 'glass');
+  [[0,0],[1,0],[-1,0],[0,1],[0,-1]].forEach(([x, z]) => p(x, 7, z, 'red'));
+  p(0, 8, 0, 'red');
+  [[2,0],[-2,0],[0,2],[0,-2]].forEach(([x, z]) => { p(x, 1, z, 'red'); p(x, 2, z, 'red'); });
+  p(0, 0, 0, 'coal');
+});
+V('barco', 'o barco', '⛵', 'water', p => {
+  for (let x = -2; x <= 2; x++) p(x, 0, 0, 'plank');
+  ringP(p, -3, -1, 3, 1, 1, 'plank');
+  for (let y = 1; y <= 5; y++) p(0, y, 0, 'log');
+  p(1, 2, 0, 'white'); p(1, 3, 0, 'white'); p(1, 4, 0, 'white'); p(2, 2, 0, 'white'); p(2, 3, 0, 'white');
+  p(0, 6, 0, 'red');
+});
+V('torre', 'a torre', '🧱', 'grass', p => {
+  for (let y = 0; y <= 5; y++) ringP(p, -1, -1, 1, 1, y, 'stone');
+  p(0, 5, 0, 'stone');
+  p(0, 0, -1, 'door'); p(0, 1, -1, 'door');
+  p(0, 3, -1, 'glass'); p(-1, 3, 0, 'glass'); p(1, 3, 0, 'glass'); p(0, 3, 1, 'glass');
+  [[1,1],[1,-1],[-1,1],[-1,-1]].forEach(([x, z]) => p(x, 6, z, 'stone'));
+});
+V('moinho', 'o moinho', '🌬️', 'grass', p => {
+  for (let y = 0; y <= 4; y++) ringP(p, -1, -1, 1, 1, y, 'stone');
+  p(0, 0, -1, 'door'); p(0, 1, -1, 'door');
+  boxP(p, -1, 5, -1, 1, 5, 1, 'roof'); p(0, 6, 0, 'roof');
+  p(0, 3, -2, 'log');
+  [[0,4],[0,5],[0,2],[0,1],[-1,3],[-2,3],[1,3],[2,3]].forEach(([x, y]) => p(x, y, -2, 'plank'));
+});
+V('ponte', 'a ponte', '🌉', 'water', p => {
+  for (let x = -4; x <= 4; x++) for (let z = -1; z <= 1; z++) p(x, 1, z, 'plank');
+  [-4, 0, 4].forEach(x => { p(x, 0, -1, 'log'); p(x, 0, 1, 'log'); });
+  for (let x = -4; x <= 4; x++) { p(x, 2, -1, 'log'); p(x, 2, 1, 'log'); }
+});
+V('farol', 'o farol', '🗼', 'sand', p => {
+  for (let y = 0; y <= 6; y++) ringP(p, -1, -1, 1, 1, y, Math.floor(y / 2) % 2 ? 'red' : 'white');
+  p(0, 0, -1, 'door'); p(0, 1, -1, 'door');
+  ringP(p, -1, -1, 1, 1, 7, 'glass'); p(0, 7, 0, 'gold');
+  boxP(p, -1, 8, -1, 1, 8, 1, 'red');
+});
+V('piramide', 'a pirâmide', '🔺', 'sand', p => {
+  for (let k = 0; k <= 3; k++) boxP(p, -3 + k, k, -3 + k, 3 - k, k, 3 - k, 'sand');
+  p(0, 0, -3, 'door');
+});
+V('celeiro', 'a fazendinha', '🐔', 'grass', p => {
+  const W = 6, D = 5;
+  for (let y = 0; y <= 2; y++) ringP(p, 0, 0, W - 1, D - 1, y, 'red');
+  [[2,0],[3,0],[2,1],[3,1]].forEach(([x, y]) => p(x, y, 0, 'door'));
+  p(0, 1, 2, 'glass'); p(W - 1, 1, 2, 'glass');
+  gable(p, W, D, 3, 'roof', 'white');
+});
+V('castelo', 'o castelo', '🏰', 'grass', p => {
+  for (let y = 0; y <= 2; y++) ringP(p, -4, -4, 4, 4, y, 'stone');
+  for (let x = -4; x <= 4; x += 2) { p(x, 3, -4, 'stone'); p(x, 3, 4, 'stone'); p(-4, 3, x, 'stone'); p(4, 3, x, 'stone'); }
+  p(0, 0, -4, 'door'); p(0, 1, -4, 'door');
+  [[-4,-4],[4,-4],[-4,4],[4,4]].forEach(([cx, cz]) => {
+    for (let y = 0; y <= 4; y++) ringP(p, cx - 1, cz - 1, cx + 1, cz + 1, y, 'stone');
+    [[1,1],[1,-1],[-1,1],[-1,-1]].forEach(([dx, dz]) => p(cx + dx, 5, cz + dz, 'stone'));
+    p(cx, 3, cz - 1, 'glass');
+  });
+  p(0, 3, -4, 'red'); p(0, 4, -4, 'red');
+});
+
+function buildState(total) {
+  let rem = total;
+  for (let i = 0; i < S.bseq.length; i++) { const n = VOX[S.bseq[i]].size; if (rem < n) return {idx: i, filled: rem, size: n}; rem -= n; }
+  return {idx: S.bseq.length, filled: rem, size: 0, need: true};
+}
 
 /* ================= ESTADO ================= */
 const KEY = 'thomas-letras-v1';
-const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:'', goal:60}, days:{}, gold:0, goldPending:0, deco:[]});
+const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:'', goal:60}, days:{}, gold:0, goldPending:0, deco:[], bseq:[]});
 let S;
 try { S = Object.assign(defState(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = defState(); }
 ['letters','syl','words','read','write','pick','rounds','set','days'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
+// migração: versão antiga (construções fixas em 2D) -> lista de construções escolhidas
+if (!Array.isArray(S.bseq) || (!S.bseq.length && S.blocks > 0 && !S.bseqMigrated)) {
+  S.bseq = [];
+  if (S.blocks > 0) { const OLD = ['casinha','arvore','torre','celeiro'], OS = [61,37,31,68]; let rem = S.blocks, i = 0; while (i < 50) { S.bseq.push(OLD[i % 4]); if (rem >= OS[i % 4]) { rem -= OS[i % 4]; i++; } else break; } }
+  S.bseqMigrated = true;
+  const st0 = buildState(S.blocks); if (!st0.need) S.bseq = S.bseq.slice(0, st0.idx + 1);
+}
+S.deco = (S.deco || []).filter(o => 'z' in o); // enfeites antigos (2D) voltam a ser ouro livre
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 function stat(group, key) { return S[group].st[key] || (S[group].st[key] = {ok:0, err:0}); }
 
@@ -491,6 +587,13 @@ const TXDEF = {
   oreY: (x,y,r) => r() < .14 ? pk(r,['#ffd54f','#ffe082']) : pk(r,STONE),
   oreG: (x,y,r) => r() < .14 ? pk(r,['#66bb6a','#a5d6a7']) : pk(r,STONE),
   oreR: (x,y,r) => r() < .14 ? pk(r,['#ef9a9a','#e57373']) : pk(r,STONE),
+  white: (x,y,r) => pk(r,['#f4f4f4','#ececec','#fafafa','#e6e6e6']),
+  red: (x,y,r) => y % 4 === 3 ? '#8e2a20' : pk(r,['#c0392b','#b33427','#cc4436']),
+  water: (x,y,r) => (y % 5 === 2 && (x + y) % 4 < 2) ? '#9ad7f5' : pk(r,['#3d8fd6','#4a9be0','#367fc2']),
+  sand: (x,y,r) => pk(r,['#e8d39a','#e2ca8a','#efdcaa','#dcc282']),
+  coal: (x,y,r) => pk(r,['#2b2b2b','#333','#242424']),
+  orange: (x,y,r) => pk(r,['#f08a24','#e57f1c','#f59a3c']),
+  grasstop: (x,y,r) => pk(r,['#5fae3e','#4f9c33','#72c04e','#58a538','#66b445']),
   gold: (x,y,r) => (x === 0 || y === 0) ? '#fff3b0' : (x === 15 || y === 15) ? '#c98a12' : ((x + y) % 7 === 0 && x > 2 && x < 13 ? '#fffbe0' : pk(r,['#f6c945','#f2b82e','#ffd75e','#eab02a']))
 };
 const TXC = {}, TX = {};
@@ -1037,46 +1140,155 @@ async function endRound() {
 $('#eAgain').addEventListener('click', () => { if (G) beginRound(G.mode, G.sel); else goHome(); });
 $('#eWorld').addEventListener('click', openWorld);
 
-/* ================= MUNDO ================= */
-// cenário: 2 blocos de espaço dos lados e em cima, e uma faixa de grama embaixo (para os enfeites)
-const PADX = 2, PADT = 2;
-function sceneDims(b) { const cols = Math.max(...b.map.map(r => r.length)), rows = b.map.length; return {W: cols + PADX * 2, H: rows + PADT + 1}; }
-function drawBuild(cv, b, filled, cell, ghost = .16, bi = -1) {
-  const cells = cellsOf(b), d = sceneDims(b);
-  cv.width = d.W * cell; cv.height = d.H * cell;
-  const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
-  for (let x = 0; x < d.W; x++) g.drawImage(TXC.grass, x * cell, (d.H - 1) * cell, cell, cell);
-  cells.forEach((c, i) => {
-    const X = (c.x + PADX) * cell, Y = (c.y + PADT) * cell;
-    g.globalAlpha = i < filled ? 1 : ghost; g.drawImage(TXC[c.t], X, Y, cell, cell);
-    if (i >= filled && ghost > 0) { g.globalAlpha = .5; g.strokeStyle = '#fff'; g.lineWidth = 1; g.strokeRect(X + .5, Y + .5, cell - 1, cell - 1); }
+/* ================= MUNDO (3D) ================= */
+// Motor 3D próprio, desenhado no canvas (funciona sem internet). Arraste o dedo para girar.
+const W3 = {bi: -1, filled: 0, yaw: -0.65, pitch: 0.6, tops: [], decoPts: [], raf: 0};
+const GROUND = {grass: ['grasstop', 'grass'], water: ['water', 'water'], sand: ['sand', 'sand']};
+const FACES = [
+  // [nome, P0, U, V, normal]
+  ['top', [0,1,0], [1,0,0], [0,0,1], [0,1,0]],
+  ['n',   [0,1,0], [1,0,0], [0,-1,0], [0,0,-1]],
+  ['s',   [1,1,1], [-1,0,0], [0,-1,0], [0,0,1]],
+  ['w',   [0,1,1], [0,0,-1], [0,-1,0], [-1,0,0]],
+  ['e',   [1,1,0], [0,0,1], [0,-1,0], [1,0,0]]
+];
+function render3D() {
+  W3.raf = 0;
+  const cv = $('#wCan'), b = W3.bi >= 0 ? VOX[S.bseq[W3.bi]] : null;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cssW = Math.round(Math.min(window.innerWidth * .94, 480)), cssH = Math.round(Math.min(window.innerHeight * .47, 470));
+  if (cv.width !== cssW * dpr || cv.height !== cssH * dpr) { cv.width = cssW * dpr; cv.height = cssH * dpr; cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px'; }
+  const g = cv.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
+  const box = b || {minX: -2, maxX: 2, minZ: -2, maxZ: 2, h: 3, ground: 'grass', cells: []};
+  const gx0 = box.minX - 2, gx1 = box.maxX + 2, gz0 = box.minZ - 2, gz1 = box.maxZ + 2;
+  const R = Math.hypot(gx1 - gx0 + 1, gz1 - gz0 + 1, box.h + 1) / 2;
+  const s = Math.min(cv.width, cv.height) / (R * 1.8);
+  const cyw = box.h / 2 - .5, cxw = (gx0 + gx1 + 1) / 2, czw = (gz0 + gz1 + 1) / 2;
+  const c = Math.cos(W3.yaw), sn = Math.sin(W3.yaw), cp = Math.cos(W3.pitch), sp = Math.sin(W3.pitch);
+  const proj = (x, y, z) => { x -= cxw; z -= czw; y -= cyw; const xr = x * c - z * sn, zr = x * sn + z * c; return [cv.width / 2 + s * xr, cv.height / 2 - s * (y * cp - zr * sp), zr * cp + y * sp]; };
+  const items = [];
+  const solid = new Set();
+  // chão (uma ilha de blocos)
+  const [gTop, gSide] = GROUND[box.ground] || GROUND.grass;
+  for (let x = gx0; x <= gx1; x++) for (let z = gz0; z <= gz1; z++) { solid.add(x + ',-1,' + z); items.push({x, y: -1, z, top: gTop, side: gSide, ground: true}); }
+  // blocos da construção
+  box.cells.forEach((cl, i) => { const f = i < W3.filled; if (f) solid.add(cl.x + ',' + cl.y + ',' + cl.z); items.push({x: cl.x, y: cl.y, z: cl.z, top: cl.t, side: cl.t, ghost: !f}); });
+  // enfeites
+  if (b) S.deco.filter(o => o.b === W3.bi && 'z' in o).forEach(o => items.push({deco: o}));
+  items.forEach(it => { if (it.deco) it.d = proj(it.deco.x, it.deco.y + .3, it.deco.z)[2] + .01; else it.d = proj(it.x + .5, it.y + .5, it.z + .5)[2]; });
+  items.sort((a, b2) => a.d - b2.d);
+  W3.tops = []; W3.decoPts = [];
+  const view = [0, sp, cp];
+  for (const it of items) {
+    if (it.deco) {
+      const [px, py] = proj(it.deco.x, it.deco.y + .45, it.deco.z);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.font = `${Math.round(s * 1.15)}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(it.deco.e, px, py);
+      W3.decoPts.push({o: it.deco, px, py, r: s * .7});
+      continue;
+    }
+    for (const [name, P, U, Vv, n] of FACES) {
+      const nx = n[0] * c - n[2] * sn, nz = n[0] * sn + n[2] * c;
+      if (n[1] * view[1] + nz * view[2] <= .001) continue;
+      if (!it.ghost && solid.has((it.x + n[0]) + ',' + (it.y + n[1]) + ',' + (it.z + n[2]))) continue;
+      const P0 = [it.x + P[0], it.y + P[1], it.z + P[2]];
+      const p0 = proj(...P0), pu = proj(P0[0] + U[0], P0[1] + U[1], P0[2] + U[2]), pv = proj(P0[0] + Vv[0], P0[1] + Vv[1], P0[2] + Vv[2]);
+      const a = [(pu[0] - p0[0]) / 16, (pu[1] - p0[1]) / 16], bb = [(pv[0] - p0[0]) / 16, (pv[1] - p0[1]) / 16];
+      g.setTransform(a[0], a[1], bb[0], bb[1], p0[0], p0[1]);
+      if (it.ghost) {
+        g.globalAlpha = .13; g.fillStyle = '#fff'; g.fillRect(0, 0, 16, 16);
+        g.globalAlpha = .45; g.strokeStyle = '#fff'; g.lineWidth = .8; g.strokeRect(.4, .4, 15.2, 15.2); g.globalAlpha = 1;
+        continue;
+      }
+      g.drawImage(TXC[name === 'top' ? it.top : it.side], 0, 0, 16, 16, -.12, -.12, 16.24, 16.24);
+      const shade = name === 'top' ? 0 : .16 + .12 * (1 - nx) + (n[2] !== 0 ? .04 : 0);
+      if (shade > 0) { g.fillStyle = `rgba(0,0,0,${shade.toFixed(3)})`; g.fillRect(-.12, -.12, 16.24, 16.24); }
+      if (name === 'top') W3.tops.push({m: [a[0], a[1], bb[0], bb[1], p0[0], p0[1]], x: it.x + .5, y: it.y + 1, z: it.z + .5});
+    }
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+}
+const redraw3D = () => { if (!W3.raf) W3.raf = requestAnimationFrame(render3D); };
+window.addEventListener('resize', () => { if (screen === 'world') redraw3D(); });
+function showView(bi, filled) { W3.bi = bi; W3.filled = filled; render3D(); drawDone(); renderDeco(); }
+
+// girar com o dedo; um toque sem arrastar coloca/pega enfeite
+(function () {
+  const cv = $('#wCan'); let down = null;
+  cv.addEventListener('pointerdown', e => { down = {x: e.clientX, y: e.clientY, yaw: W3.yaw, pitch: W3.pitch, moved: false}; try { cv.setPointerCapture(e.pointerId); } catch (er) {} });
+  cv.addEventListener('pointermove', e => {
+    if (!down) return;
+    const dx = e.clientX - down.x, dy = e.clientY - down.y;
+    if (!down.moved && Math.hypot(dx, dy) < 8) return;
+    down.moved = true;
+    W3.yaw = down.yaw + dx * .012; W3.pitch = Math.max(.3, Math.min(1.15, down.pitch + dy * .006));
+    redraw3D();
   });
-  g.globalAlpha = 1;
-  if (bi >= 0) {
-    g.font = `${Math.round(cell * 1.7)}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    S.deco.filter(o => o.b === bi).forEach(o => g.fillText(o.e, o.x * cv.width, o.y * cv.height));
+  cv.addEventListener('pointerup', e => {
+    const d = down; down = null; if (!d || d.moved) return;
+    const r = cv.getBoundingClientRect(), k = cv.width / r.width;
+    tap3D((e.clientX - r.left) * k, (e.clientY - r.top) * k);
+  });
+  cv.addEventListener('pointercancel', () => { down = null; });
+})();
+function tap3D(px, py) {
+  actx();
+  if (W3.bi < 0) return;
+  if (hand) {
+    for (let i = W3.tops.length - 1; i >= 0; i--) {
+      const t = W3.tops[i], [a, b, cc, d, e, f] = t.m, det = a * d - b * cc;
+      if (!det) continue;
+      const u = ((px - e) * d - (py - f) * cc) / det, v = (a * (py - f) - b * (px - e)) / det;
+      if (u >= 0 && u <= 16 && v >= 0 && v <= 16) {
+        S.deco.push({b: W3.bi, x: t.x, y: t.y, z: t.z, e: hand});
+        const name = decoName(hand); hand = null; save();
+        render3D(); renderDeco(); sPlace(); setTimeout(sChime, 80); confetti(10);
+        hush(); say(`Ficou lindo! Você colocou ${name}.`);
+        return;
+      }
+    }
+    return;
+  }
+  // tocar num enfeite já colocado: pega de novo para mudar de lugar
+  for (let i = W3.decoPts.length - 1; i >= 0; i--) {
+    const q = W3.decoPts[i];
+    if (Math.hypot(q.px - px, q.py - py) < q.r) {
+      const idx = S.deco.indexOf(q.o); if (idx < 0) return;
+      hand = q.o.e; S.deco.splice(idx, 1); save();
+      render3D(); renderDeco(); sPop();
+      hush(); say('Toque onde você quer colocar agora.');
+      return;
+    }
   }
 }
-function cellSize(b) { const d = sceneDims(b); const maxW = Math.min(window.innerWidth * .92, 460), maxH = window.innerHeight * .44; return Math.max(8, Math.floor(Math.min(maxW / d.W, maxH / d.H))); }
-let shownBI = 0, shownFilled = 0, hand = null;
-function drawMain(bi, filled) { shownBI = bi; shownFilled = filled; drawBuild($('#wCan'), buildAt(bi), filled, cellSize(buildAt(bi)), .16, bi); }
-function drawDone(idx) {
-  const box = $('#wDone'); box.innerHTML = '';
-  for (let i = Math.max(0, idx - 6); i < idx; i++) { const c = document.createElement('canvas'); drawBuild(c, buildAt(i), 999, 6, 0, i); box.appendChild(c); }
+
+/* --- construções prontas (botões para ver cada uma) --- */
+function drawDone() {
+  const box = $('#wDone'), st = buildState(S.blocks);
+  const n = Math.min(st.idx + (st.need ? 0 : 1), S.bseq.length);
+  if (n <= 1) { box.innerHTML = ''; return; }
+  box.innerHTML = S.bseq.slice(0, n).map((id, i) => `<button class="bchip${i === W3.bi ? ' on' : ''}" data-i="${i}">${VOX[id].emoji}${i === st.idx && !st.need ? '<small>🔨</small>' : ''}</button>`).join('');
+  $$('#wDone .bchip').forEach(bt => bt.addEventListener('click', () => {
+    const i = +bt.dataset.i, cur = buildState(S.blocks);
+    hand = null; showView(i, i < cur.idx ? 1e9 : cur.filled); hush(); say(VOX[S.bseq[i]].name.replace(/^(o|a) /, '') + '!');
+  }));
 }
 
 /* --- enfeites com os blocos de ouro --- */
 const DECOS = [['🌻','um girassol'],['🌷','uma tulipa'],['⭐','uma estrela'],['🎈','um balão'],['🍄','um cogumelo'],['🦋','uma borboleta'],['🐔','uma galinha'],['🐱','um gatinho'],['🐶','um cachorrinho'],['🏮','uma lanterna'],['💎','uma joia'],['🌈','um arco-íris']];
 const decoName = e => (DECOS.find(d => d[0] === e) || [e, 'o enfeite'])[1];
 const goldFree = () => Math.max(0, S.gold - S.deco.length);
+let hand = null;
 function renderDeco() {
   const box = $('#wDeco'), free = goldFree();
-  if (hand) box.innerHTML = `<div class="decohint"><span class="big">${hand}</span> Toque onde quer colocar <button class="icon" id="decoCancel" style="width:44px;height:44px;font-size:20px">↩️</button></div>`;
+  if (W3.bi < 0) box.innerHTML = '';
+  else if (hand) box.innerHTML = `<div class="decohint"><span class="big">${hand}</span> Toque no chão ou num bloco <button class="icon" id="decoCancel" style="width:44px;height:44px;font-size:20px">↩️</button></div>`;
   else if (free > 0) box.innerHTML = `<button class="pbtn goldbtn" id="decoOpen">⭐ Enfeitar (${free})</button>`;
-  else if (!S.gold) box.innerHTML = `<div class="small" style="background:rgba(255,255,255,.75);border-radius:10px;padding:6px 12px;display:inline-block;font-size:15px">Jogue a meta do dia para ganhar blocos de ouro e enfeitar a casa ⭐</div>`;
-  else box.innerHTML = '';
+  else if (!S.gold) box.innerHTML = `<div class="small" style="background:rgba(255,255,255,.75);border-radius:10px;padding:6px 12px;display:inline-block;font-size:15px">👆 Arraste para girar · Jogue a meta do dia para ganhar ouro ⭐</div>`;
+  else box.innerHTML = `<div class="small" style="background:rgba(255,255,255,.75);border-radius:10px;padding:6px 12px;display:inline-block;font-size:15px">👆 Arraste para girar · toque num enfeite para mudar de lugar</div>`;
   const o = $('#decoOpen'); if (o) o.addEventListener('click', openTray);
-  const c = $('#decoCancel'); if (c) c.addEventListener('click', () => { hand = null; renderDeco(); hush(); say('Tudo bem, depois você coloca.'); });
+  const cc = $('#decoCancel'); if (cc) cc.addEventListener('click', () => { hand = null; renderDeco(); hush(); say('Tudo bem, depois você coloca.'); });
 }
 function openTray() {
   actx(); hush();
@@ -1089,40 +1301,52 @@ function openTray() {
   say('Escolha um enfeite para a sua casa!');
 }
 $('#decoClose').addEventListener('click', () => { hush(); $('#decoTray').classList.add('hidden'); });
-$('#wCan').addEventListener('click', e => {
-  actx();
-  const cv = $('#wCan'), r = cv.getBoundingClientRect();
-  const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
-  if (hand) {
-    S.deco.push({b: shownBI, x: Math.min(.97, Math.max(.03, fx)), y: Math.min(.97, Math.max(.03, fy)), e: hand});
-    const name = decoName(hand); hand = null; save();
-    drawMain(shownBI, shownFilled); renderDeco(); sPlace(); setTimeout(sChime, 80); confetti(10);
-    hush(); say(`Ficou lindo! Você colocou ${name}.`);
-    return;
-  }
-  // tocar num enfeite já colocado: pega ele de novo para mudar de lugar
-  const cell = r.width / sceneDims(buildAt(shownBI)).W;
-  let best = null, bd = 1e9;
-  S.deco.forEach((o, i) => { if (o.b !== shownBI) return; const d = Math.hypot((o.x - fx) * r.width, (o.y - fy) * r.height); if (d < bd) { bd = d; best = i; } });
-  if (best !== null && bd < cell * 1.3) {
-    hand = S.deco[best].e; S.deco.splice(best, 1); save();
-    drawMain(shownBI, shownFilled); renderDeco(); sPop();
-    hush(); say('Toque onde você quer colocar agora.');
-  }
-});
-function worldInfo(st) {
-  const left = st.size - st.filled, b = buildAt(st.idx);
-  $('#wInfo').innerHTML = `Construindo ${b.name}: <b>${st.filled}</b> de <b>${st.size}</b> blocos`;
-  return `Faltam ${left} blocos para terminar ${b.name}.`;
+
+/* --- escolher a próxima construção --- */
+function openChooser() {
+  hush();
+  let sel = null;
+  const built = id => S.bseq.filter(x => x === id).length;
+  $('#bpGrid').innerHTML = VOX_IDS.map(id => { const v = VOX[id]; return `<button data-id="${id}"><span class="e">${v.emoji}</span><span class="n">${v.name.replace(/^(o|a) /, '')}</span><span class="c">${v.size} blocos${built(id) ? ' · ✓' : ''}</span></button>`; }).join('');
+  $$('#bpGrid button').forEach(bt => bt.addEventListener('click', () => {
+    actx(); sel = bt.dataset.id;
+    $$('#bpGrid button').forEach(x => x.classList.toggle('on', x === bt));
+    hush(); say(VOX[sel].name.replace(/^(o|a) /, '') + '!');
+  }));
+  $('#bpGo').onclick = async () => {
+    actx();
+    if (!sel) { hush(); say('Toque numa construção primeiro!'); return; }
+    S.bseq.push(sel); save();
+    $('#buildPick').classList.add('hidden');
+    sFanfare(); hush();
+    await say(`Vamos construir ${VOX[sel].name}!`);
+    openWorld();
+  };
+  $('#buildPick').classList.remove('hidden');
+  say(S.bseq.length ? 'O que você quer construir agora? Toque e depois aperte construir!' : 'O que você quer construir primeiro? Toque e depois aperte construir!');
 }
+
+function worldInfo(st) {
+  if (st.need) { $('#wInfo').innerHTML = 'Escolha a próxima construção! 🔨'; return 'Escolha a próxima construção!'; }
+  const v = VOX[S.bseq[st.idx]], left = st.size - st.filled;
+  $('#wInfo').innerHTML = `${v.emoji} Construindo ${v.name}: <b>${st.filled}</b> de <b>${st.size}</b> blocos`;
+  return `Faltam ${left} blocos para terminar ${v.name}.`;
+}
+let rotHint = false;
 async function openWorld() {
-  gen++; hush(); stopRec(); const g = gen; G = null; show('world');
+  gen++; hush(); stopRec(); const g = gen; G = null; show('world'); hand = null;
   const from = Math.min(S.seen || 0, S.blocks), to = S.blocks;
   let st = buildState(from);
-  hand = null; drawMain(st.idx, st.filled);
-  drawDone(st.idx); worldInfo(st); renderDeco();
+  if (st.need) {
+    // terminou tudo o que tinha escolhido (ou é a primeira vez): mostra a última e pede a próxima
+    showView(S.bseq.length - 1, 1e9); worldInfo(st);
+    if (!S.bseq.length) $('#wInfo').innerHTML = 'Escolha o que construir! 🔨';
+    openChooser(); return;
+  }
+  showView(st.idx, st.filled); worldInfo(st);
   if (from === to) {
-    await say(S.blocks === 0 ? 'Aqui vamos construir uma casinha! Jogue para ganhar blocos.' : `Olha a sua construção, Thomas! ${worldInfo(st)}`);
+    await say(`Olha a sua construção, Thomas! ${worldInfo(st)}`);
+    if (g === gen && !rotHint) { rotHint = true; await say('Arraste o dedo para girar!'); }
     if (g === gen && goldFree() > 0 && !hand) await say('Você tem blocos de ouro! Toque em Enfeitar para escolher um enfeite.');
     return;
   }
@@ -1130,27 +1354,21 @@ async function openWorld() {
   for (let k = from + 1; k <= to; k++) {
     if (g !== gen) return;
     const prev = buildState(k - 1), now = buildState(k);
+    S.seen = k; save();
     if (now.idx > prev.idx) {
-      // terminou uma construção
-      const b = buildAt(prev.idx);
-      drawMain(prev.idx, 999); sPlace();
-      S.seen = k; save();
+      const v = VOX[S.bseq[prev.idx]];
+      showView(prev.idx, 1e9); sPlace();
       await wait(300); sFanfare(); confetti(30); showPraise('Terminou!');
-      $('#wInfo').innerHTML = `Você terminou ${b.name}! 🎉`;
-      await say(`Uau, Thomas! Você terminou ${b.name}! Que construção linda!`);
+      $('#wInfo').innerHTML = `Você terminou ${v.name}! 🎉`;
+      await say(`Uau, Thomas! Você terminou ${v.name}! Que construção linda!`);
       if (g !== gen) return;
-      await wait(600);
-      drawDone(now.idx);
-    } else {
-      sPlace();
-      S.seen = k; save();
-    }
-    drawMain(now.idx, now.filled);
-    worldInfo(now);
-    await wait(260);
+      if (now.need) { await wait(400); if (g === gen) openChooser(); return; }
+      showView(now.idx, now.filled); worldInfo(now);
+    } else { sPlace(); W3.filled = now.filled; redraw3D(); worldInfo(now); }
+    await wait(220);
   }
   if (g !== gen) return;
-  st = buildState(to);
+  st = buildState(to); drawDone();
   await say(worldInfo(st));
   if (g === gen && goldFree() > 0 && !hand) await say('Você tem blocos de ouro! Toque em Enfeitar para escolher um enfeite.');
 }
@@ -1304,7 +1522,7 @@ $('#startBtn').addEventListener('click', () => {
 updateCounter();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · enfeites de ouro na casinha';
+const VERSAO = '12/nov · construções em 3D e ele escolhe a próxima';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }

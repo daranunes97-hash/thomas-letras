@@ -1,5 +1,5 @@
 // Faz o app abrir sem internet. Com internet, sempre busca a versão nova primeiro.
-const CACHE = 'thomas-letras-v2';
+const CACHE = 'thomas-letras-v3';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'];
 
 self.addEventListener('install', e => {
