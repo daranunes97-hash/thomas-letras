@@ -321,12 +321,9 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     <label>Velocidade da voz: <b id="pRateV"></b>
       <input type="range" id="pRate" min="0.6" max="1.1" step="0.05"></label>
     <div class="row"><button id="pTest">🔊 Testar voz</button></div>
-    <label>Voz do cachorrinho
-      <select id="pPetPitch">
-        <option value="1.3">Normal</option>
-        <option value="1.7">Fofinha (cachorrinho)</option>
-        <option value="2">Bem fininha</option>
-      </select></label>
+    <label>Voz do cachorrinho (masculina)
+      <select id="pPetVoice"></select></label>
+    <div class="small" id="pPetInfo"></div>
     <div class="row"><button id="pTestPet">🐶 Testar voz do cachorrinho</button></div>
     <div class="small" id="pVoice"></div>
     <label>Quantos blocos para escolher
@@ -555,7 +552,7 @@ function buildState(total) {
 
 /* ================= ESTADO ================= */
 const KEY = 'thomas-letras-v1';
-const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:'', goal:60, petPitch:1.7}, days:{}, gold:0, goldPending:0, deco:[], bseq:[]});
+const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:'', goal:60, petVoice:''}, days:{}, gold:0, goldPending:0, deco:[], bseq:[]});
 let S;
 try { S = Object.assign(defState(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = defState(); }
 ['letters','syl','words','read','write','pick','rounds','set','days'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
@@ -628,13 +625,22 @@ function pickVoice() {
   let pt = vs.filter(v => /^pt[-_]BR/i.test(v.lang));
   if (!pt.length) pt = vs.filter(v => /^pt/i.test(v.lang));
   voice = pt.find(v => /google/i.test(v.name)) || pt.find(v => /luciana|francisca|thalita|maria|female|feminina/i.test(v.name)) || pt[0] || null;
+  ptVoices = pt;
+  // voz do cachorrinho: a escolhida na área dos pais, ou uma voz masculina do celular, se houver
+  const MALE = /male\b|masculin|homem|daniel|felipe|ricardo|antonio|ant[oô]nio|fabio|f[aá]bio|humberto|julio|j[uú]lio|donato|nicolau|valerio|-ptd|-pte|x-ptd|x-pte|ptd-|pte-/i;
+  petVoice = pt.find(v => v.name === S.set.petVoice) || pt.find(v => MALE.test(v.name) && !/female|feminina/i.test(v.name)) || null;
 }
+let petVoice = null, ptVoices = [];
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 function say(text, pet = false) {
   return new Promise(res => {
     if (!('speechSynthesis' in window)) { setTimeout(res, 400 + text.length * 55); return; }
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'pt-BR'; if (voice) u.voice = voice; u.rate = pet ? Math.min(1.3, S.set.rate * 1.08) : S.set.rate; u.pitch = pet ? (+S.set.petPitch || 1.7) : 1.1;
+    u.lang = 'pt-BR';
+    const pv = pet && petVoice ? petVoice : voice; if (pv) u.voice = pv;
+    u.rate = S.set.rate;
+    // sem voz masculina no celular, a voz do cachorrinho fica mais grave
+    u.pitch = pet ? (petVoice ? 1 : 0.7) : 1.1;
     let done = false; const fin = () => { if (!done) { done = true; res(); } };
     u.onend = fin; u.onerror = fin;
     setTimeout(fin, 2000 + text.length * 110 / S.set.rate);
@@ -1505,7 +1511,10 @@ function renderParent() {
   const ws = Object.entries(S.words.st);
   $('#pWords').innerHTML = ws.length ? ws.map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : 'Ainda não jogou palavras.';
   $('#pVer').textContent = 'Versão: ' + VERSAO;
-  $('#pPetPitch').value = String(S.set.petPitch || 1.7);
+  pickVoice();
+  $('#pPetVoice').innerHTML = `<option value="">Automática</option>` + ptVoices.map(v => `<option value="${v.name.replace(/"/g, '&quot;')}">${v.name}</option>`).join('');
+  $('#pPetVoice').value = S.set.petVoice && ptVoices.some(v => v.name === S.set.petVoice) ? S.set.petVoice : '';
+  $('#pPetInfo').textContent = petVoice ? `Usando: ${petVoice.name}` : 'Não achei uma voz masculina com nome no celular. Por isso, a voz normal fica mais grave para o cachorrinho. Se a lista acima tiver outras vozes, teste uma por uma.';
   $('#pGoal').value = String(S.set.goal || 60);
   const fmt = sec => { const m = Math.floor(sec / 60); return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`; };
   const dkeys = Object.keys(S.days).sort().reverse().slice(0, 30);
@@ -1529,7 +1538,7 @@ $('#pPet').addEventListener('click', () => { $('#parent').classList.add('hidden'
 $('#pClose').addEventListener('click', () => { $('#parent').classList.add('hidden'); });
 $('#pRate').addEventListener('input', e => { S.set.rate = +e.target.value; save(); $('#pRateV').textContent = Math.round(S.set.rate * 100) + '%'; });
 $('#pTest').addEventListener('click', () => { actx(); hush(); say('Oi, Thomas! Bê mais a, dá ba!'); });
-$('#pPetPitch').addEventListener('change', e => { S.set.petPitch = +e.target.value; save(); actx(); hush(); petSay('Oi, Thomas! Muito bem!'); });
+$('#pPetVoice').addEventListener('change', e => { S.set.petVoice = e.target.value; save(); pickVoice(); renderParent(); actx(); hush(); petSay('Oi, Thomas! Muito bem!'); });
 $('#pTestPet').addEventListener('click', () => { actx(); hush(); petSay(`Oi, Thomas! ${S.set.pet ? 'Eu sou o ' + S.set.pet + '!' : 'Muito bem!'}`); });
 $('#pOpts').addEventListener('change', e => { S.set.opts = e.target.value; save(); });
 $('#pFx').addEventListener('change', e => { S.set.fx = e.target.checked; save(); });
@@ -1654,7 +1663,7 @@ updateCounter();
 })();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · voz de cachorrinho e nenhum jogo mostra a resposta';
+const VERSAO = '12/nov · voz masculina do cachorrinho';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
