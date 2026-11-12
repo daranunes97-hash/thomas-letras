@@ -564,7 +564,7 @@ async function showParts(btn, s) {
 /* --- Ler em voz alta --- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let micBlocked = false, rec = null;
-const useMic = () => !!SR && S.set.mic && !micBlocked;
+const useMic = () => !!SR && S.set.mic; // o microfone nunca some: se falhar, ele tenta de novo ou usa o “Eu li!”
 function stopRec() { if (rec) { try { rec.abort(); } catch (e) {} rec = null; } }
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ');
 function lev(a, b) { const d = Array.from({length: a.length + 1}, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j; for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1)); return d[a.length][b.length]; }
@@ -597,20 +597,20 @@ function qRead() {
   const w = pickWeighted(pool, x => { const st = stat('read', x[0]); return 1 + st.err + (st.ok < 1 ? 1.5 : 0) - Math.min(st.ok, 6) * .1; }, G.last);
   G.last = w;
   const [word, syls, emoji] = w;
-  G.cur = {type:'read', word, syls, emoji, key: word, help: 0, prompt: () => G.cur.help >= 2 ? `Escute: ${word.toLowerCase()}. Agora você!` : useMic() ? 'Leia esta palavra em voz alta, e toque no microfone.' : 'Leia esta palavra em voz alta. Depois toque no botão verde.'};
+  G.cur = {type:'read', word, syls, emoji, key: word, help: 0, prompt: () => G.cur.help >= 2 ? `Escute: ${word.toLowerCase()}. Agora você!` : useMic() ? 'Leia esta palavra em voz alta. Se precisar, toque nos pedaços para ouvir.' : 'Leia esta palavra em voz alta. Depois toque no botão verde.'};
   setPrompt('❓', null);
-  $('#craft').innerHTML = `<div class="readrow">${syls.map((s, i) => `<button class="blk wide px rsyl${useMic() ? '' : ' tap'}" data-i="${i}" style="background-image:url(${TX.plank})"><span class="face">${s}</span></button>`).join('')}</div>`;
+  $('#craft').innerHTML = `<div class="readrow">${syls.map((s, i) => `<button class="blk wide px rsyl tap" data-i="${i}" style="background-image:url(${TX.plank})"><span class="face">${s}</span></button>`).join('')}</div>`;
   $$('.rsyl').forEach(b => b.addEventListener('click', () => { if (!G || G.lock) return; hush(); b.classList.remove('wiggle'); void b.offsetWidth; b.classList.add('wiggle'); showParts(b, syls[+b.dataset.i]); }));
   renderReadButtons();
 }
 function renderReadButtons() {
   if (useMic()) {
-    $('#opts').innerHTML = `<button class="mic" id="micBtn">🎤<span>Falar</span></button>`;
+    $('#opts').innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:22px"><button class="mic" id="micBtn">🎤<span>Falar</span></button><button class="pbtn" id="liBtn" style="font-size:20px;padding:10px 22px;min-height:48px">✅ Eu li!</button></div>`;
     $('#micBtn').addEventListener('click', doListen);
   } else {
     $('#opts').innerHTML = `<button class="pbtn" id="liBtn" style="font-size:28px;padding:18px 34px">✅ Eu li!</button>`;
-    $('#liBtn').addEventListener('click', selfRead);
   }
+  $('#liBtn').addEventListener('click', selfRead);
 }
 async function doListen() {
   if (!G || G.lock) return;
@@ -623,12 +623,13 @@ async function doListen() {
   mb.classList.remove('listen'); mb.querySelector('span').textContent = 'Falar';
   lastTouch = Date.now();
   if (!r.ok && /not-allowed|service-not-allowed|audio-capture|start|network/.test(r.err)) {
-    micBlocked = true; renderReadButtons(); $$('.rsyl').forEach(b => b.classList.add('tap'));
+    micBlocked = true; // só para avisar na área dos pais; o botão continua
     G.lock = false;
-    await say('Hmm, o microfone não funcionou agora. Leia em voz alta e depois toque no botão verde.');
+    await say(r.err === 'network' ? 'Hmm, o microfone precisa de internet. Leia em voz alta e toque em Eu li.' : 'Hmm, o microfone não funcionou agora. Tente de novo, ou leia em voz alta e toque em Eu li.');
     return;
   }
   const heard = r.heard || [];
+  if (r.ok) micBlocked = false;
   if (!heard.length) { G.lock = false; await say('Não ouvi nada. Toque no microfone e fale bem alto!'); return; }
   if (heardMatch(heard, G.cur.word)) return readWin(g);
   readMiss(g);
@@ -974,7 +975,7 @@ function renderParent() {
   $('#pVer').textContent = 'Versão: ' + VERSAO;
   $('#pMic').checked = !!S.set.mic;
   $('#pMicInfo').innerHTML = !SR ? 'Este navegador não entende fala. O jogo usa o modo “✅ Eu li!”: ele lê em voz alta e depois o cachorrinho mostra a resposta.'
-    : micBlocked ? 'O microfone foi bloqueado nesta página. Por isso, agora o jogo está no modo “✅ Eu li!”.'
+    : micBlocked ? '⚠️ Da última vez o microfone não funcionou. Pode estar sem permissão: toque no cadeado ao lado do endereço e permita o microfone, ou verifique a internet. Dentro da página do Claude ele nunca funciona; use o link do GitHub.'
     : 'Precisa de internet e da permissão do microfone. No Android, o Google transforma a fala em texto. O jogo é tolerante: se não entender, ajuda em etapas e nunca diz “errado”.';
   const rs = Object.entries(S.read.st);
   $('#pRead').innerHTML = rs.length ? 'Leu de primeira / precisou de ajuda: ' + rs.filter(([, s]) => s.ok + s.err).map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : 'Ainda não jogou Ler.';
@@ -1039,7 +1040,7 @@ $('#startBtn').addEventListener('click', () => {
 updateCounter();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · o Thomas escolhe o nome do cachorrinho';
+const VERSAO = '12/nov · Ler: sílabas falam antes e microfone sempre visível';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
