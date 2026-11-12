@@ -321,10 +321,10 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     <label>Velocidade da voz: <b id="pRateV"></b>
       <input type="range" id="pRate" min="0.6" max="1.1" step="0.05"></label>
     <div class="row"><button id="pTest">🔊 Testar voz</button></div>
-    <label>Voz do cachorrinho (masculina)
+    <label>Voz do jogo (masculina)
       <select id="pPetVoice"></select></label>
     <div class="small" id="pPetInfo"></div>
-    <div class="row"><button id="pTestPet">🐶 Testar voz do cachorrinho</button></div>
+
     <div class="small" id="pVoice"></div>
     <label>Quantos blocos para escolher
       <select id="pOpts">
@@ -624,11 +624,11 @@ function pickVoice() {
   const vs = speechSynthesis.getVoices();
   let pt = vs.filter(v => /^pt[-_]BR/i.test(v.lang));
   if (!pt.length) pt = vs.filter(v => /^pt/i.test(v.lang));
-  voice = pt.find(v => /google/i.test(v.name)) || pt.find(v => /luciana|francisca|thalita|maria|female|feminina/i.test(v.name)) || pt[0] || null;
   ptVoices = pt;
-  // voz do cachorrinho: a escolhida na área dos pais, ou uma voz masculina do celular, se houver
+  // o jogo todo fala com voz masculina: a escolhida na área dos pais, ou uma voz masculina do celular, se houver
   const MALE = /male\b|masculin|homem|daniel|felipe|ricardo|antonio|ant[oô]nio|fabio|f[aá]bio|humberto|julio|j[uú]lio|donato|nicolau|valerio|-ptd|-pte|x-ptd|x-pte|ptd-|pte-/i;
   petVoice = pt.find(v => v.name === S.set.petVoice) || pt.find(v => MALE.test(v.name) && !/female|feminina/i.test(v.name)) || null;
+  voice = petVoice || pt.find(v => /google/i.test(v.name)) || pt[0] || null;
 }
 let petVoice = null, ptVoices = [];
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
@@ -637,10 +637,10 @@ function say(text, pet = false) {
     if (!('speechSynthesis' in window)) { setTimeout(res, 400 + text.length * 55); return; }
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'pt-BR';
-    const pv = pet && petVoice ? petVoice : voice; if (pv) u.voice = pv;
+    if (voice) u.voice = voice;
     u.rate = S.set.rate;
-    // sem voz masculina no celular, a voz do cachorrinho fica mais grave
-    u.pitch = pet ? (petVoice ? 1 : 0.7) : 1.1;
+    // voz masculina em tudo; se o celular não tiver uma, a voz que existe fica mais grave
+    u.pitch = petVoice ? 1 : 0.72;
     let done = false; const fin = () => { if (!done) { done = true; res(); } };
     u.onend = fin; u.onerror = fin;
     setTimeout(fin, 2000 + text.length * 110 / S.set.rate);
@@ -1514,7 +1514,7 @@ function renderParent() {
   pickVoice();
   $('#pPetVoice').innerHTML = `<option value="">Automática</option>` + ptVoices.map(v => `<option value="${v.name.replace(/"/g, '&quot;')}">${v.name}</option>`).join('');
   $('#pPetVoice').value = S.set.petVoice && ptVoices.some(v => v.name === S.set.petVoice) ? S.set.petVoice : '';
-  $('#pPetInfo').textContent = petVoice ? `Usando: ${petVoice.name}` : 'Não achei uma voz masculina com nome no celular. Por isso, a voz normal fica mais grave para o cachorrinho. Se a lista acima tiver outras vozes, teste uma por uma.';
+  $('#pPetInfo').textContent = petVoice ? `Usando: ${petVoice.name}` : 'Não achei uma voz masculina no celular. Por isso, a voz que existe fica mais grave em todo o jogo. Se a lista acima tiver outras vozes, teste uma por uma.';
   $('#pGoal').value = String(S.set.goal || 60);
   const fmt = sec => { const m = Math.floor(sec / 60); return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`; };
   const dkeys = Object.keys(S.days).sort().reverse().slice(0, 30);
@@ -1539,7 +1539,6 @@ $('#pClose').addEventListener('click', () => { $('#parent').classList.add('hidde
 $('#pRate').addEventListener('input', e => { S.set.rate = +e.target.value; save(); $('#pRateV').textContent = Math.round(S.set.rate * 100) + '%'; });
 $('#pTest').addEventListener('click', () => { actx(); hush(); say('Oi, Thomas! Bê mais a, dá ba!'); });
 $('#pPetVoice').addEventListener('change', e => { S.set.petVoice = e.target.value; save(); pickVoice(); renderParent(); actx(); hush(); petSay('Oi, Thomas! Muito bem!'); });
-$('#pTestPet').addEventListener('click', () => { actx(); hush(); petSay(`Oi, Thomas! ${S.set.pet ? 'Eu sou o ' + S.set.pet + '!' : 'Muito bem!'}`); });
 $('#pOpts').addEventListener('change', e => { S.set.opts = e.target.value; save(); });
 $('#pFx').addEventListener('change', e => { S.set.fx = e.target.checked; save(); });
 $('#pGoal').addEventListener('change', e => { S.set.goal = +e.target.value; const t = today(); t.gold = Math.max(t.gold, Math.floor(t.sec / goalSec())); save(); renderTime(); renderParent(); });
@@ -1663,7 +1662,7 @@ updateCounter();
 })();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · voz masculina do cachorrinho';
+const VERSAO = '12/nov · voz masculina no jogo todo';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
