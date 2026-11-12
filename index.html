@@ -63,6 +63,15 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 .card.wide{grid-column:span 2;min-height:120px;flex-direction:row}
 .card.wide .art{min-height:0}
 .card.wide .lbl{display:grid;place-items:center;flex:1}
+/* tempo do dia */
+#timebar{position:relative;z-index:2;display:flex;align-items:center;gap:8px;padding:6px 12px 0}
+.tb-track{flex:1;height:26px;border-radius:13px;background:rgba(255,255,255,.7);position:relative;overflow:hidden;box-shadow:inset 0 0 0 2px rgba(0,0,0,.08)}
+.tb-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(#8fe06a,#5fae3e);transition:width .8s}
+.tb-fill.done{background:linear-gradient(#ffe37a,#f2b82e)}
+#tbLbl{position:relative;display:block;text-align:center;line-height:26px;font-size:15px}
+.tb-gold{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.8);padding:2px 10px 2px 4px;border-radius:14px;font-size:17px}
+.tb-gold .mini{width:20px;height:20px}
+.tb-gold.pop,.tb-track.pop{animation:pop .5s ease}
 /* escolher letras/sílabas */
 #pickTitle{margin:0 14px;text-align:center;font-size:22px;display:flex;align-items:center;justify-content:center;gap:10px}
 #pickGrid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:14px 14px 170px;align-content:start}
@@ -204,6 +213,10 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 <div class="ground px" id="ground"></div>
 
 <div id="app">
+  <div id="timebar" aria-label="Tempo de jogo hoje">
+    <div class="tb-track"><div class="tb-fill" id="tbFill"></div><span id="tbLbl">⏱️ 0 min</span></div>
+    <div class="tb-gold"><span class="mini px" data-tex="gold"></span><b id="tbGold">0</b></div>
+  </div>
   <!-- INÍCIO -->
   <section id="home" class="screen">
     <button id="gear" class="icon" aria-label="Área dos pais (segure)">⚙️<span class="ring"></span></button>
@@ -313,6 +326,15 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 
     <h3>Escrever ✏️</h3>
     <div class="small" id="pWrite"></div>
+
+    <h3>Tempo de jogo ⏱️</h3>
+    <label>Meta por dia (a cada meta jogada ele ganha 1 bloco de ouro)
+      <select id="pGoal">
+        <option value="15">15 minutos</option><option value="20">20 minutos</option><option value="30">30 minutos</option>
+        <option value="45">45 minutos</option><option value="60">1 hora</option><option value="90">1 hora e meia</option><option value="120">2 horas</option>
+      </select></label>
+    <div class="small">Conta só quando o jogo está aberto na tela e ele está mexendo (se ficar 2 min sem tocar, o relógio pausa). Ele pode sair antes ou ficar mais: é só um bônus.</div>
+    <div id="pDays" class="small" style="margin-top:6px"></div>
 
     <h3>Resumo</h3>
     <div id="pSum" class="small"></div>
@@ -425,10 +447,10 @@ function buildState(total) { let i = 0, rem = total; while (rem >= cellsOf(build
 
 /* ================= ESTADO ================= */
 const KEY = 'thomas-letras-v1';
-const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:''}});
+const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:'', goal:60}, days:{}, gold:0, goldPending:0});
 let S;
 try { S = Object.assign(defState(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = defState(); }
-['letters','syl','words','read','write','pick','rounds','set'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
+['letters','syl','words','read','write','pick','rounds','set','days'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 function stat(group, key) { return S[group].st[key] || (S[group].st[key] = {ok:0, err:0}); }
 
@@ -450,7 +472,8 @@ const TXDEF = {
   oreB: (x,y,r) => r() < .14 ? pk(r,['#4fc3f7','#81d4fa']) : pk(r,STONE),
   oreY: (x,y,r) => r() < .14 ? pk(r,['#ffd54f','#ffe082']) : pk(r,STONE),
   oreG: (x,y,r) => r() < .14 ? pk(r,['#66bb6a','#a5d6a7']) : pk(r,STONE),
-  oreR: (x,y,r) => r() < .14 ? pk(r,['#ef9a9a','#e57373']) : pk(r,STONE)
+  oreR: (x,y,r) => r() < .14 ? pk(r,['#ef9a9a','#e57373']) : pk(r,STONE),
+  gold: (x,y,r) => (x === 0 || y === 0) ? '#fff3b0' : (x === 15 || y === 15) ? '#c98a12' : ((x + y) % 7 === 0 && x > 2 && x < 13 ? '#fffbe0' : pk(r,['#f6c945','#f2b82e','#ffd75e','#eab02a']))
 };
 const TXC = {}, TX = {};
 Object.keys(TXDEF).forEach((k, i) => {
@@ -991,6 +1014,7 @@ async function endRound() {
   if (g !== gen) return;
   if (buildState(S.blocks).idx > before) await say('Sua construção está quase pronta! Vamos ver?');
   else await say('Vamos colocar os blocos na sua casa?');
+  if (g === gen) await announceGold();
 }
 $('#eAgain').addEventListener('click', () => { if (G) beginRound(G.mode, G.sel); else goHome(); });
 $('#eWorld').addEventListener('click', openWorld);
@@ -1013,7 +1037,7 @@ function drawDone(idx) {
 }
 function worldInfo(st) {
   const left = st.size - st.filled, b = buildAt(st.idx);
-  $('#wInfo').innerHTML = `Construindo ${b.name}: <b>${st.filled}</b> de <b>${st.size}</b> blocos`;
+  $('#wInfo').innerHTML = `Construindo ${b.name}: <b>${st.filled}</b> de <b>${st.size}</b> blocos` + (S.gold ? `<div style="margin-top:6px">Blocos de ouro: ${Array.from({length: Math.min(S.gold, 12)}, () => `<span class="mini px" style="background-image:url(${TX.gold});margin:0 1px;vertical-align:middle"></span>`).join('')}${S.gold > 12 ? ' +' + (S.gold - 12) : ''}</div>` : '');
   return `Faltam ${left} blocos para terminar ${b.name}.`;
 }
 async function openWorld() {
@@ -1090,6 +1114,13 @@ function renderParent() {
   const ws = Object.entries(S.words.st);
   $('#pWords').innerHTML = ws.length ? ws.map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : 'Ainda não jogou palavras.';
   $('#pVer').textContent = 'Versão: ' + VERSAO;
+  $('#pGoal').value = String(S.set.goal || 60);
+  const fmt = sec => { const m = Math.floor(sec / 60); return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`; };
+  const dkeys = Object.keys(S.days).sort().reverse().slice(0, 30);
+  $('#pDays').innerHTML = dkeys.length ? `<table style="width:100%;border-collapse:collapse;font-size:14px;color:#333">
+    <tr style="text-align:left;border-bottom:1px solid #ddd"><th>Dia</th><th>Tempo</th><th>Meta</th><th>Ouro</th></tr>
+    ${dkeys.map(k => { const d = S.days[k], [y, m, dd] = k.split('-'); return `<tr style="border-bottom:1px solid #f0f0f0"><td>${dd}/${m}</td><td>${fmt(d.sec)}</td><td>${d.sec >= goalSec() ? '✅' : '—'}</td><td>${d.gold || 0}</td></tr>`; }).join('')}
+  </table><div style="margin-top:4px">Total de blocos de ouro: ${S.gold}</div>` : 'Ainda não há registro de tempo.';
   $('#pMic').checked = !!S.set.mic;
   $('#pMicInfo').innerHTML = !SR ? 'Este navegador não entende fala. O jogo usa o modo “✅ Eu li!”: ele lê em voz alta e depois o cachorrinho mostra a resposta.'
     : micBlocked ? '⚠️ Da última vez o microfone não funcionou. Pode estar sem permissão: toque no cadeado ao lado do endereço e permita o microfone, ou verifique a internet. Dentro da página do Claude ele nunca funciona; use o link do GitHub.'
@@ -1108,13 +1139,52 @@ $('#pRate').addEventListener('input', e => { S.set.rate = +e.target.value; save(
 $('#pTest').addEventListener('click', () => { actx(); hush(); say('Oi, Thomas! Bê mais a, dá ba!'); });
 $('#pOpts').addEventListener('change', e => { S.set.opts = e.target.value; save(); });
 $('#pFx').addEventListener('change', e => { S.set.fx = e.target.checked; save(); });
+$('#pGoal').addEventListener('change', e => { S.set.goal = +e.target.value; const t = today(); t.gold = Math.max(t.gold, Math.floor(t.sec / goalSec())); save(); renderTime(); renderParent(); });
 $('#pMic').addEventListener('change', e => { S.set.mic = e.target.checked; if (S.set.mic) micBlocked = false; save(); renderParent(); });
 let resetArm = 0;
 $('#pReset').addEventListener('click', e => {
-  if (Date.now() - resetArm < 4000) { const set = S.set; S = defState(); S.set = set; save(); updateCounter(); renderParent(); e.target.textContent = 'Progresso zerado'; resetArm = 0; return; }
+  if (Date.now() - resetArm < 4000) { const set = S.set, days = S.days, gold = S.gold; S = defState(); S.set = set; S.days = days; S.gold = gold; save(); updateCounter(); renderParent(); e.target.textContent = 'Progresso zerado'; resetArm = 0; return; }
   resetArm = Date.now(); e.target.textContent = 'Tem certeza? Toque de novo para zerar';
   setTimeout(() => { e.target.textContent = 'Zerar todo o progresso'; }, 4000);
 });
+
+/* ================= TEMPO DO DIA ================= */
+// Conta só o tempo com o app aberto na tela e com alguém mexendo (sem toque por 2 min, pausa).
+// A cada meta (padrão: 60 min) jogada no dia, ganha 1 bloco de ouro. Ninguém é obrigado a ficar nem a sair.
+let started = false, tickN = 0;
+function todayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function today() { const k = todayKey(); return S.days[k] || (S.days[k] = {sec: 0, gold: 0}); }
+function goalSec() { return Math.max(5, +S.set.goal || 60) * 60; }
+function renderTime() {
+  const t = today(), gs = goalSec(), min = Math.floor(t.sec / 60), goalMin = gs / 60;
+  const reached = t.sec >= gs;
+  const frac = reached ? ((t.sec % gs) / gs) : t.sec / gs;
+  $('#tbFill').style.width = (reached && frac < .02 ? 100 : frac * 100) + '%';
+  $('#tbFill').classList.toggle('done', reached);
+  $('#tbLbl').textContent = reached ? `⭐ ${min} min hoje · meta feita!` : `⏱️ ${min} de ${goalMin} min`;
+  $('#tbGold').textContent = S.gold;
+}
+async function announceGold() {
+  if (!S.goldPending) return;
+  const n = S.goldPending; S.goldPending = 0; save();
+  sFanfare(); confetti(26); showPraise('Bloco de ouro!');
+  $('.tb-gold').classList.remove('pop'); void $('.tb-gold').offsetWidth; $('.tb-gold').classList.add('pop');
+  await say(n > 1 ? `Uau, Thomas! Você ganhou ${n} blocos de ouro por jogar bastante hoje!` : 'Uau, Thomas! Você jogou bastante hoje e ganhou um bloco de ouro!');
+}
+setInterval(() => {
+  if (!started || document.hidden || Date.now() - lastTouch > 120000) return;
+  const t = today(), gs = goalSec();
+  t.sec++;
+  const earned = Math.floor(t.sec / gs);
+  if (earned > t.gold) {
+    const n = earned - t.gold; t.gold = earned; S.gold += n; S.goldPending += n; save(); renderTime();
+    // anuncia na hora se não estiver no meio de uma pergunta; se estiver, anuncia no fim da rodada
+    if (screen !== 'game') announceGold();
+    return;
+  }
+  if (++tickN % 10 === 0) save();
+  if (tickN % 5 === 0) renderTime();
+}, 1000);
 
 /* ================= NOME DO CACHORRINHO ================= */
 const cleanName = t => t.replace(/[<>&"]/g, '').replace(/\s+/g, ' ').trim().slice(0, 16);
@@ -1146,6 +1216,7 @@ $('#nameOk').addEventListener('click', async () => {
 $('#startBtn').addEventListener('click', () => {
   actx(); hush();
   $('#start').remove();
+  started = true; lastTouch = Date.now(); renderTime();
   goHome(false);
   // aquece a voz (iOS precisa de um toque antes de falar)
   renderPetName();
@@ -1155,7 +1226,7 @@ $('#startBtn').addEventListener('click', () => {
 updateCounter();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · tudo liberado: ele escolhe letras e sílabas do dia';
+const VERSAO = '12/nov · relógio do dia e bloco de ouro';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
