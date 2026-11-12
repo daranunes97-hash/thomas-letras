@@ -298,7 +298,7 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
   <section id="world" class="screen">
     <div class="topbar">
       <button class="icon goHome" aria-label="Início">⬅️</button>
-      <div class="grow"></div>
+      <div class="grow" style="display:flex;justify-content:center"><button id="wToggle" class="pbtn brown" style="min-height:48px;font-size:19px;padding:8px 16px">🏙️ Cidade</button></div>
       <div class="counter"><span class="mini px" data-tex="grass"></span><b class="cnt">0</b></div>
     </div>
     <div id="wInfo"></div>
@@ -363,14 +363,6 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     <div class="small" id="pVer" style="margin-top:10px"></div>
     <button id="pReset" class="danger">Zerar todo o progresso</button>
     <div class="row" style="margin-top:14px"><button id="pClose" class="sbtn" style="background:#5fae3e;color:#fff;border:none;font-size:18px">Fechar</button></div>
-  </div>
-</div>
-
-<div id="buildPick" class="overlay hidden" style="align-items:center">
-  <div class="panel" style="text-align:center;font-family:inherit;border-radius:16px;margin:auto 12px">
-    <h2>O que vamos construir? 🔨</h2>
-    <div id="bpGrid"></div>
-    <button id="bpGo" class="pbtn" style="width:100%;font-size:24px">▶ Construir!</button>
   </div>
 </div>
 
@@ -564,6 +556,7 @@ if (!Array.isArray(S.bseq) || (!S.bseq.length && S.blocks > 0 && !S.bseqMigrated
   S.bseqMigrated = true;
   const st0 = buildState(S.blocks); if (!st0.need) S.bseq = S.bseq.slice(0, st0.idx + 1);
 }
+S.bseq = [...new Set(S.bseq)]; // cada construção tem um terreno só na cidade
 S.deco = (S.deco || []).filter(o => 'z' in o); // enfeites antigos (2D) voltam a ser ouro livre
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 function stat(group, key) { return S[group].st[key] || (S[group].st[key] = {ok:0, err:0}); }
@@ -1142,55 +1135,55 @@ $('#eWorld').addEventListener('click', openWorld);
 
 /* ================= MUNDO (3D) ================= */
 // Motor 3D próprio, desenhado no canvas (funciona sem internet). Arraste o dedo para girar.
-const W3 = {bi: -1, filled: 0, yaw: -0.65, pitch: 0.6, tops: [], decoPts: [], raf: 0};
+// Duas vistas: "construção" (uma construção grande, para montar e enfeitar) e "cidade" (todas lado a lado, com cadeados).
+const W3 = {bi: -1, filled: 0, yaw: -0.65, pitch: 0.6, city: false, tops: [], decoPts: [], plots: [], pending: null, raf: 0};
 const GROUND = {grass: ['grasstop', 'grass'], water: ['water', 'water'], sand: ['sand', 'sand']};
+const GCOL = {grass: '#5fae3e', water: '#3d8fd6', sand: '#e6cf93'};
 const FACES = [
-  // [nome, P0, U, V, normal]
   ['top', [0,1,0], [1,0,0], [0,0,1], [0,1,0]],
   ['n',   [0,1,0], [1,0,0], [0,-1,0], [0,0,-1]],
   ['s',   [1,1,1], [-1,0,0], [0,-1,0], [0,0,1]],
   ['w',   [0,1,1], [0,0,-1], [0,-1,0], [-1,0,0]],
   ['e',   [1,1,0], [0,0,1], [0,-1,0], [1,0,0]]
 ];
-function render3D() {
-  W3.raf = 0;
-  const cv = $('#wCan'), b = W3.bi >= 0 ? VOX[S.bseq[W3.bi]] : null;
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const cssW = Math.round(Math.min(window.innerWidth * .94, 480)), cssH = Math.round(Math.min(window.innerHeight * .47, 470));
+const PLOT = 13, PCOLS = 4;
+function plotXZ(id) { const i = VOX_IDS.indexOf(id), col = i % PCOLS, row = Math.floor(i / PCOLS); return [(col - (PCOLS - 1) / 2) * PLOT, (row - (Math.ceil(VOX_IDS.length / PCOLS) - 1) / 2) * PLOT]; }
+const canUnlock = () => buildState(S.blocks).need && S.bseq.length < VOX_IDS.length;
+
+function setupCanvas() {
+  const cv = $('#wCan'), dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cssW = Math.round(Math.min(window.innerWidth * .96, 520)), cssH = Math.round(Math.min(window.innerHeight * .54, 540));
   if (cv.width !== cssW * dpr || cv.height !== cssH * dpr) { cv.width = cssW * dpr; cv.height = cssH * dpr; cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px'; }
   const g = cv.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
-  const box = b || {minX: -2, maxX: 2, minZ: -2, maxZ: 2, h: 3, ground: 'grass', cells: []};
-  const gx0 = box.minX - 2, gx1 = box.maxX + 2, gz0 = box.minZ - 2, gz1 = box.maxZ + 2;
-  const R = Math.hypot(gx1 - gx0 + 1, gz1 - gz0 + 1, box.h + 1) / 2;
-  const s = Math.min(cv.width, cv.height) / (R * 1.8);
-  const cyw = box.h / 2 - .5, cxw = (gx0 + gx1 + 1) / 2, czw = (gz0 + gz1 + 1) / 2;
+  return [cv, g];
+}
+function makeProj(cv, s, cx, cy, cz, offX = 0, offY = 0) {
   const c = Math.cos(W3.yaw), sn = Math.sin(W3.yaw), cp = Math.cos(W3.pitch), sp = Math.sin(W3.pitch);
-  const proj = (x, y, z) => { x -= cxw; z -= czw; y -= cyw; const xr = x * c - z * sn, zr = x * sn + z * c; return [cv.width / 2 + s * xr, cv.height / 2 - s * (y * cp - zr * sp), zr * cp + y * sp]; };
-  const items = [];
-  const solid = new Set();
-  // chão (uma ilha de blocos)
-  const [gTop, gSide] = GROUND[box.ground] || GROUND.grass;
-  for (let x = gx0; x <= gx1; x++) for (let z = gz0; z <= gz1; z++) { solid.add(x + ',-1,' + z); items.push({x, y: -1, z, top: gTop, side: gSide, ground: true}); }
-  // blocos da construção
-  box.cells.forEach((cl, i) => { const f = i < W3.filled; if (f) solid.add(cl.x + ',' + cl.y + ',' + cl.z); items.push({x: cl.x, y: cl.y, z: cl.z, top: cl.t, side: cl.t, ghost: !f}); });
-  // enfeites
-  if (b) S.deco.filter(o => o.b === W3.bi && 'z' in o).forEach(o => items.push({deco: o}));
-  items.forEach(it => { if (it.deco) it.d = proj(it.deco.x, it.deco.y + .3, it.deco.z)[2] + .01; else it.d = proj(it.x + .5, it.y + .5, it.z + .5)[2]; });
-  items.sort((a, b2) => a.d - b2.d);
-  W3.tops = []; W3.decoPts = [];
-  const view = [0, sp, cp];
+  const f = (x, y, z) => { x -= cx; z -= cz; y -= cy; const xr = x * c - z * sn, zr = x * sn + z * c; return [cv.width / 2 + offX + s * xr, cv.height / 2 + offY - s * (y * cp - zr * sp), zr * cp + y * sp]; };
+  f.c = c; f.sn = sn; f.sp = sp; f.cp = cp; return f;
+}
+function poly(g, pts, fill, stroke) { g.setTransform(1, 0, 0, 1, 0, 0); g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) { g.strokeStyle = stroke; g.lineWidth = 2; g.stroke(); } }
+// desenha cubos, enfeites e etiquetas, do mais longe para o mais perto
+function drawItems(g, items, proj, s, solid, recordTops) {
+  items.forEach(it => {
+    if (it.deco) it.d = proj(it.deco.x, it.deco.y + .3, it.deco.z)[2] + .01;
+    else if (it.label) it.d = proj(it.x, it.y, it.z)[2] + 50;
+    else it.d = proj(it.x + .5, it.y + .5, it.z + .5)[2];
+  });
+  items.sort((a, b) => a.d - b.d);
   for (const it of items) {
-    if (it.deco) {
-      const [px, py] = proj(it.deco.x, it.deco.y + .45, it.deco.z);
-      g.setTransform(1, 0, 0, 1, 0, 0);
-      g.font = `${Math.round(s * 1.15)}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(it.deco.e, px, py);
-      W3.decoPts.push({o: it.deco, px, py, r: s * .7});
+    if (it.deco || it.label) {
+      const [px, py] = it.deco ? proj(it.deco.x, it.deco.y + .45, it.deco.z) : proj(it.x, it.y, it.z);
+      g.setTransform(1, 0, 0, 1, 0, 0); g.textAlign = 'center'; g.textBaseline = 'middle';
+      if (it.deco) {
+        g.font = `${Math.round(s * 1.15)}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`; g.fillText(it.deco.e, px, py);
+        if (recordTops) W3.decoPts.push({o: it.deco, px, py, r: s * .7});
+      } else it.label(g, px, py);
       continue;
     }
     for (const [name, P, U, Vv, n] of FACES) {
-      const nx = n[0] * c - n[2] * sn, nz = n[0] * sn + n[2] * c;
-      if (n[1] * view[1] + nz * view[2] <= .001) continue;
+      const nx = n[0] * proj.c - n[2] * proj.sn, nz = n[0] * proj.sn + n[2] * proj.c;
+      if (n[1] * proj.sp + nz * proj.cp <= .001) continue;
       if (!it.ghost && solid.has((it.x + n[0]) + ',' + (it.y + n[1]) + ',' + (it.z + n[2]))) continue;
       const P0 = [it.x + P[0], it.y + P[1], it.z + P[2]];
       const p0 = proj(...P0), pu = proj(P0[0] + U[0], P0[1] + U[1], P0[2] + U[2]), pv = proj(P0[0] + Vv[0], P0[1] + Vv[1], P0[2] + Vv[2]);
@@ -1203,17 +1196,92 @@ function render3D() {
       }
       g.drawImage(TXC[name === 'top' ? it.top : it.side], 0, 0, 16, 16, -.12, -.12, 16.24, 16.24);
       const shade = name === 'top' ? 0 : .16 + .12 * (1 - nx) + (n[2] !== 0 ? .04 : 0);
-      if (shade > 0) { g.fillStyle = `rgba(0,0,0,${shade.toFixed(3)})`; g.fillRect(-.12, -.12, 16.24, 16.24); }
-      if (name === 'top') W3.tops.push({m: [a[0], a[1], bb[0], bb[1], p0[0], p0[1]], x: it.x + .5, y: it.y + 1, z: it.z + .5});
+      g.fillStyle = `rgba(0,0,0,${shade.toFixed(3)})`; if (shade > 0) g.fillRect(-.12, -.12, 16.24, 16.24);
+      if (name === 'top' && recordTops) W3.tops.push({m: [a[0], a[1], bb[0], bb[1], p0[0], p0[1]], x: it.x + .5, y: it.y + 1, z: it.z + .5});
     }
   }
   g.setTransform(1, 0, 0, 1, 0, 0);
 }
+
+/* --- vista de uma construção --- */
+function renderFocus() {
+  const [cv, g] = setupCanvas(), b = W3.bi >= 0 ? VOX[S.bseq[W3.bi]] : null;
+  const box = b || {minX: -2, maxX: 2, minZ: -2, maxZ: 2, h: 3, ground: 'grass', cells: []};
+  const gx0 = box.minX - 2, gx1 = box.maxX + 2, gz0 = box.minZ - 2, gz1 = box.maxZ + 2;
+  const R = Math.hypot(gx1 - gx0 + 1, gz1 - gz0 + 1, box.h + 1) / 2, s = Math.min(cv.width, cv.height) / (R * 1.8);
+  const proj = makeProj(cv, s, (gx0 + gx1 + 1) / 2, box.h / 2 - .5, (gz0 + gz1 + 1) / 2);
+  const items = [], solid = new Set(), [gTop, gSide] = GROUND[box.ground] || GROUND.grass;
+  for (let x = gx0; x <= gx1; x++) for (let z = gz0; z <= gz1; z++) { solid.add(x + ',-1,' + z); items.push({x, y: -1, z, top: gTop, side: gSide}); }
+  box.cells.forEach((cl, i) => { const f = i < W3.filled; if (f) solid.add(cl.x + ',' + cl.y + ',' + cl.z); items.push({x: cl.x, y: cl.y, z: cl.z, top: cl.t, side: cl.t, ghost: !f}); });
+  if (b) S.deco.filter(o => o.b === W3.bi && 'z' in o).forEach(o => items.push({deco: o}));
+  W3.tops = []; W3.decoPts = [];
+  drawItems(g, items, proj, s, solid, true);
+}
+
+/* --- vista da cidade --- */
+function renderCity() {
+  const [cv, g] = setupCanvas(), st = buildState(S.blocks), unlock = canUnlock();
+  const rows = Math.ceil(VOX_IDS.length / PCOLS), half = [PCOLS * PLOT / 2 + 1, rows * PLOT / 2 + 1];
+  // enquadra a cidade inteira no canvas, do jeito que estiver girada
+  const p1 = makeProj(cv, 1, 0, 0, 0), pts = [];
+  [-half[0], half[0]].forEach(x => [-half[1], half[1]].forEach(z => [-1, 9].forEach(y => pts.push(p1(x, y, z)))));
+  const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+  const bw = Math.max(...xs) - Math.min(...xs), bh = Math.max(...ys) - Math.min(...ys);
+  const s = Math.min(cv.width * .97 / bw, cv.height * .95 / bh);
+  const mx = (Math.max(...xs) + Math.min(...xs)) / 2 - cv.width / 2, my = (Math.max(...ys) + Math.min(...ys)) / 2 - cv.height / 2;
+  const proj = makeProj(cv, s, 0, 0, 0, -mx * s, -my * s);
+  // chão da cidade (uma placa só, com a lateral de terra)
+  const Y = 0, c4 = [[-half[0], -half[1]], [half[0], -half[1]], [half[0], half[1]], [-half[0], half[1]]];
+  const top = c4.map(([x, z]) => proj(x, Y, z));
+  for (let i = 0; i < 4; i++) { const a = c4[i], b = c4[(i + 1) % 4]; const side = [proj(a[0], Y, a[1]), proj(b[0], Y, b[1]), proj(b[0], Y - 1, b[1]), proj(a[0], Y - 1, a[1])]; poly(g, side, '#7a4e25'); }
+  poly(g, top, '#5fae3e');
+  // ruas entre os terrenos
+  for (let c = 1; c < PCOLS; c++) { const x = (c - PCOLS / 2) * PLOT; poly(g, [proj(x - .7, Y, -half[1] + .5), proj(x + .7, Y, -half[1] + .5), proj(x + .7, Y, half[1] - .5), proj(x - .7, Y, half[1] - .5)], '#a8a8a8'); }
+  for (let r = 1; r < rows; r++) { const z = (r - rows / 2) * PLOT; poly(g, [proj(-half[0] + .5, Y, z - .7), proj(half[0] - .5, Y, z - .7), proj(half[0] - .5, Y, z + .7), proj(-half[0] + .5, Y, z + .7)], '#a8a8a8'); }
+  const items = [], solid = new Set();
+  W3.plots = []; W3.tops = []; W3.decoPts = [];
+  VOX_IDS.forEach(id => {
+    const v = VOX[id], [ox, oz] = plotXZ(id), bi = S.bseq.indexOf(id);
+    const plotPts = [[ox - 5.5, oz - 5.5], [ox + 5.5, oz - 5.5], [ox + 5.5, oz + 5.5], [ox - 5.5, oz + 5.5]].map(([x, z]) => proj(x, Y + .01, z));
+    const [pcx, pcy] = proj(ox, Y + 1.5, oz);
+    W3.plots.push({id, bi, px: pcx, py: pcy, r: s * PLOT * .5});
+    if (bi < 0) {
+      // terreno trancado
+      const hot = unlock && W3.pending === id;
+      poly(g, plotPts, unlock ? (hot ? 'rgba(255,214,70,.95)' : 'rgba(255,230,120,.55)') : 'rgba(0,0,0,.08)', unlock ? '#f2b82e' : 'rgba(255,255,255,.6)');
+      items.push({x: ox, y: Y + 2.2, z: oz, label: (gg, px, py) => {
+        gg.font = `${Math.round(s * 4.2)}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+        gg.globalAlpha = .6; gg.fillText(v.emoji, px, py - s * 2); gg.globalAlpha = 1;
+        gg.font = `${Math.round(s * (hot ? 4.6 : 3.6))}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+        gg.fillText(hot ? '🔓' : '🔒', px, py + s * 1.6);
+      }});
+      return;
+    }
+    if (v.ground !== 'grass') poly(g, plotPts, GCOL[v.ground]);
+    const filled = bi < st.idx ? Infinity : bi === st.idx ? st.filled : 0;
+    v.cells.forEach((cl, i) => {
+      const f = i < filled, x = cl.x + ox, z = cl.z + oz;
+      if (f) solid.add(x + ',' + cl.y + ',' + z);
+      if (f || bi === st.idx) items.push({x, y: cl.y, z, top: cl.t, side: cl.t, ghost: !f});
+    });
+    S.deco.filter(o => o.b === bi && 'z' in o).forEach(o => items.push({deco: {e: o.e, x: o.x + ox, y: o.y, z: o.z + oz}}));
+    if (bi === st.idx) items.push({x: ox, y: v.h + 1.5, z: oz, label: (gg, px, py) => { gg.font = `${Math.round(s * 2.6)}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`; gg.fillText('🔨', px, py); }});
+  });
+  drawItems(g, items, proj, s, solid, false);
+}
+function render3D() { W3.raf = 0; if (W3.city) renderCity(); else renderFocus(); }
 const redraw3D = () => { if (!W3.raf) W3.raf = requestAnimationFrame(render3D); };
 window.addEventListener('resize', () => { if (screen === 'world') redraw3D(); });
-function showView(bi, filled) { W3.bi = bi; W3.filled = filled; render3D(); drawDone(); renderDeco(); }
+function showView(bi, filled) { if (W3.city) { W3.yaw = -.65; W3.pitch = .6; } W3.city = false; W3.bi = bi; W3.filled = filled; render3D(); renderDeco(); renderToggle(); }
+function showCity() { if (!W3.city) { W3.yaw = -.5; W3.pitch = .95; } W3.city = true; hand = null; render3D(); renderDeco(); renderToggle(); }
+function renderToggle() {
+  const t = $('#wToggle'); if (!t) return;
+  const st = buildState(S.blocks);
+  t.style.display = S.bseq.length ? '' : 'none';
+  t.textContent = W3.city ? (st.need ? '🏙️' : '🔨 Construção') : '🏙️ Cidade';
+}
 
-// girar com o dedo; um toque sem arrastar coloca/pega enfeite
+// girar com o dedo; um toque sem arrastar coloca enfeite / escolhe terreno
 (function () {
   const cv = $('#wCan'); let down = null;
   cv.addEventListener('pointerdown', e => { down = {x: e.clientX, y: e.clientY, yaw: W3.yaw, pitch: W3.pitch, moved: false}; try { cv.setPointerCapture(e.pointerId); } catch (er) {} });
@@ -1222,13 +1290,14 @@ function showView(bi, filled) { W3.bi = bi; W3.filled = filled; render3D(); draw
     const dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) < 8) return;
     down.moved = true;
-    W3.yaw = down.yaw + dx * .012; W3.pitch = Math.max(.3, Math.min(1.15, down.pitch + dy * .006));
+    W3.yaw = down.yaw + dx * .012; W3.pitch = Math.max(.3, Math.min(1.2, down.pitch + dy * .006));
     redraw3D();
   });
   cv.addEventListener('pointerup', e => {
     const d = down; down = null; if (!d || d.moved) return;
     const r = cv.getBoundingClientRect(), k = cv.width / r.width;
-    tap3D((e.clientX - r.left) * k, (e.clientY - r.top) * k);
+    const px = (e.clientX - r.left) * k, py = (e.clientY - r.top) * k;
+    if (W3.city) tapCity(px, py); else tap3D(px, py);
   });
   cv.addEventListener('pointercancel', () => { down = null; });
 })();
@@ -1250,7 +1319,6 @@ function tap3D(px, py) {
     }
     return;
   }
-  // tocar num enfeite já colocado: pega de novo para mudar de lugar
   for (let i = W3.decoPts.length - 1; i >= 0; i--) {
     const q = W3.decoPts[i];
     if (Math.hypot(q.px - px, q.py - py) < q.r) {
@@ -1262,17 +1330,28 @@ function tap3D(px, py) {
     }
   }
 }
-
-/* --- construções prontas (botões para ver cada uma) --- */
-function drawDone() {
-  const box = $('#wDone'), st = buildState(S.blocks);
-  const n = Math.min(st.idx + (st.need ? 0 : 1), S.bseq.length);
-  if (n <= 1) { box.innerHTML = ''; return; }
-  box.innerHTML = S.bseq.slice(0, n).map((id, i) => `<button class="bchip${i === W3.bi ? ' on' : ''}" data-i="${i}">${VOX[id].emoji}${i === st.idx && !st.need ? '<small>🔨</small>' : ''}</button>`).join('');
-  $$('#wDone .bchip').forEach(bt => bt.addEventListener('click', () => {
-    const i = +bt.dataset.i, cur = buildState(S.blocks);
-    hand = null; showView(i, i < cur.idx ? 1e9 : cur.filled); hush(); say(VOX[S.bseq[i]].name.replace(/^(o|a) /, '') + '!');
-  }));
+function tapCity(px, py) {
+  actx();
+  let best = null, bd = 1e9;
+  W3.plots.forEach(p => { const d = Math.hypot(p.px - px, p.py - py); if (d < bd) { bd = d; best = p; } });
+  if (!best || bd > best.r) return;
+  const v = VOX[best.id], nm = v.name.replace(/^(o|a) /, ''), st = buildState(S.blocks);
+  hush();
+  if (best.bi >= 0) { // construção já liberada: abre ela grande
+    showView(best.bi, best.bi < st.idx ? 1e9 : st.filled); worldInfo(best.bi === st.idx ? st : {done: best.bi});
+    say(nm + '!');
+    return;
+  }
+  if (!canUnlock()) { const cur = VOX[S.bseq[st.idx]]; say(`${nm} está trancado. Termine ${cur.name} primeiro!`); return; }
+  if (W3.pending !== best.id) { W3.pending = best.id; render3D(); say(`${nm}! Toque de novo no cadeado para abrir!`); return; }
+  unlockBuild(best.id);
+}
+async function unlockBuild(id) {
+  const v = VOX[id]; W3.pending = null;
+  S.bseq.push(id); save();
+  render3D(); sFanfare(); confetti(30); showPraise('🔓 ' + v.emoji);
+  await say(`Você abriu ${v.name}! Vamos construir!`);
+  openWorld();
 }
 
 /* --- enfeites com os blocos de ouro --- */
@@ -1282,11 +1361,12 @@ const goldFree = () => Math.max(0, S.gold - S.deco.length);
 let hand = null;
 function renderDeco() {
   const box = $('#wDeco'), free = goldFree();
-  if (W3.bi < 0) box.innerHTML = '';
+  const tip = t => `<div class="small" style="background:rgba(255,255,255,.75);border-radius:10px;padding:6px 12px;display:inline-block;font-size:15px">${t}</div>`;
+  if (W3.city) box.innerHTML = tip(canUnlock() ? '🔒 Toque num cadeado para escolher a próxima construção' : '👆 Arraste para girar · toque numa construção para ver de perto');
+  else if (W3.bi < 0) box.innerHTML = '';
   else if (hand) box.innerHTML = `<div class="decohint"><span class="big">${hand}</span> Toque no chão ou num bloco <button class="icon" id="decoCancel" style="width:44px;height:44px;font-size:20px">↩️</button></div>`;
   else if (free > 0) box.innerHTML = `<button class="pbtn goldbtn" id="decoOpen">⭐ Enfeitar (${free})</button>`;
-  else if (!S.gold) box.innerHTML = `<div class="small" style="background:rgba(255,255,255,.75);border-radius:10px;padding:6px 12px;display:inline-block;font-size:15px">👆 Arraste para girar · Jogue a meta do dia para ganhar ouro ⭐</div>`;
-  else box.innerHTML = `<div class="small" style="background:rgba(255,255,255,.75);border-radius:10px;padding:6px 12px;display:inline-block;font-size:15px">👆 Arraste para girar · toque num enfeite para mudar de lugar</div>`;
+  else box.innerHTML = tip(S.gold ? '👆 Arraste para girar · toque num enfeite para mudar de lugar' : '👆 Arraste para girar · jogue a meta do dia para ganhar ouro ⭐');
   const o = $('#decoOpen'); if (o) o.addEventListener('click', openTray);
   const cc = $('#decoCancel'); if (cc) cc.addEventListener('click', () => { hand = null; renderDeco(); hush(); say('Tudo bem, depois você coloca.'); });
 }
@@ -1301,48 +1381,34 @@ function openTray() {
   say('Escolha um enfeite para a sua casa!');
 }
 $('#decoClose').addEventListener('click', () => { hush(); $('#decoTray').classList.add('hidden'); });
+$('#wToggle').addEventListener('click', () => {
+  actx(); hush();
+  if (W3.city) { const st = buildState(S.blocks); if (st.need) { say(canUnlock() ? 'Toque num cadeado para escolher a próxima construção!' : 'Sua cidade está completa!'); return; } showView(st.idx, st.filled); worldInfo(st); say(VOX[S.bseq[st.idx]].name.replace(/^(o|a) /, '') + '!'); }
+  else { showCity(); cityInfo(); say('Sua cidade!'); }
+});
 
-/* --- escolher a próxima construção --- */
-function openChooser() {
-  hush();
-  let sel = null;
-  const built = id => S.bseq.filter(x => x === id).length;
-  $('#bpGrid').innerHTML = VOX_IDS.map(id => { const v = VOX[id]; return `<button data-id="${id}"><span class="e">${v.emoji}</span><span class="n">${v.name.replace(/^(o|a) /, '')}</span><span class="c">${v.size} blocos${built(id) ? ' · ✓' : ''}</span></button>`; }).join('');
-  $$('#bpGrid button').forEach(bt => bt.addEventListener('click', () => {
-    actx(); sel = bt.dataset.id;
-    $$('#bpGrid button').forEach(x => x.classList.toggle('on', x === bt));
-    hush(); say(VOX[sel].name.replace(/^(o|a) /, '') + '!');
-  }));
-  $('#bpGo').onclick = async () => {
-    actx();
-    if (!sel) { hush(); say('Toque numa construção primeiro!'); return; }
-    S.bseq.push(sel); save();
-    $('#buildPick').classList.add('hidden');
-    sFanfare(); hush();
-    await say(`Vamos construir ${VOX[sel].name}!`);
-    openWorld();
-  };
-  $('#buildPick').classList.remove('hidden');
-  say(S.bseq.length ? 'O que você quer construir agora? Toque e depois aperte construir!' : 'O que você quer construir primeiro? Toque e depois aperte construir!');
+function cityInfo() {
+  const done = buildState(S.blocks), n = done.need ? S.bseq.length : done.idx;
+  $('#wInfo').innerHTML = `🏙️ Minha cidade: <b>${n}</b> de <b>${VOX_IDS.length}</b> construções prontas`;
 }
-
 function worldInfo(st) {
-  if (st.need) { $('#wInfo').innerHTML = 'Escolha a próxima construção! 🔨'; return 'Escolha a próxima construção!'; }
+  if (st.done !== undefined) { const v = VOX[S.bseq[st.done]]; $('#wInfo').innerHTML = `${v.emoji} ${v.name[0].toUpperCase() + v.name.slice(1)}: pronta! ✅`; return ''; }
+  if (st.need) { cityInfo(); return ''; }
   const v = VOX[S.bseq[st.idx]], left = st.size - st.filled;
   $('#wInfo').innerHTML = `${v.emoji} Construindo ${v.name}: <b>${st.filled}</b> de <b>${st.size}</b> blocos`;
   return `Faltam ${left} blocos para terminar ${v.name}.`;
 }
+async function askUnlock(g) {
+  showCity(); cityInfo();
+  if (!canUnlock()) { await say('Uau, Thomas! Sua cidade está completa! Parabéns!'); return; }
+  await say(S.bseq.length ? 'Agora toque num cadeado para abrir a próxima construção!' : 'Bem-vindo à sua cidade, Thomas! Toque num cadeado para escolher a primeira construção!');
+}
 let rotHint = false;
 async function openWorld() {
-  gen++; hush(); stopRec(); const g = gen; G = null; show('world'); hand = null;
+  gen++; hush(); stopRec(); const g = gen; G = null; show('world'); hand = null; W3.pending = null;
   const from = Math.min(S.seen || 0, S.blocks), to = S.blocks;
   let st = buildState(from);
-  if (st.need) {
-    // terminou tudo o que tinha escolhido (ou é a primeira vez): mostra a última e pede a próxima
-    showView(S.bseq.length - 1, 1e9); worldInfo(st);
-    if (!S.bseq.length) $('#wInfo').innerHTML = 'Escolha o que construir! 🔨';
-    openChooser(); return;
-  }
+  if (st.need) { S.seen = to; save(); return askUnlock(g); }
   showView(st.idx, st.filled); worldInfo(st);
   if (from === to) {
     await say(`Olha a sua construção, Thomas! ${worldInfo(st)}`);
@@ -1354,21 +1420,21 @@ async function openWorld() {
   for (let k = from + 1; k <= to; k++) {
     if (g !== gen) return;
     const prev = buildState(k - 1), now = buildState(k);
-    S.seen = k; save();
     if (now.idx > prev.idx) {
       const v = VOX[S.bseq[prev.idx]];
+      S.seen = now.need ? to : k; save();
       showView(prev.idx, 1e9); sPlace();
       await wait(300); sFanfare(); confetti(30); showPraise('Terminou!');
       $('#wInfo').innerHTML = `Você terminou ${v.name}! 🎉`;
       await say(`Uau, Thomas! Você terminou ${v.name}! Que construção linda!`);
       if (g !== gen) return;
-      if (now.need) { await wait(400); if (g === gen) openChooser(); return; }
+      if (now.need) { await wait(400); if (g === gen) askUnlock(g); return; }
       showView(now.idx, now.filled); worldInfo(now);
-    } else { sPlace(); W3.filled = now.filled; redraw3D(); worldInfo(now); }
+    } else { S.seen = k; save(); sPlace(); W3.filled = now.filled; redraw3D(); worldInfo(now); }
     await wait(220);
   }
   if (g !== gen) return;
-  st = buildState(to); drawDone();
+  st = buildState(to); renderToggle();
   await say(worldInfo(st));
   if (g === gen && goldFree() > 0 && !hand) await say('Você tem blocos de ouro! Toque em Enfeitar para escolher um enfeite.');
 }
@@ -1522,7 +1588,7 @@ $('#startBtn').addEventListener('click', () => {
 updateCounter();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · construções em 3D e ele escolhe a próxima';
+const VERSAO = '12/nov · cidade com cadeados';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
