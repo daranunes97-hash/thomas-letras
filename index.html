@@ -63,6 +63,15 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 .card.wide{grid-column:span 2;min-height:120px;flex-direction:row}
 .card.wide .art{min-height:0}
 .card.wide .lbl{display:grid;place-items:center;flex:1}
+/* escolher letras/sílabas */
+#pickTitle{margin:0 14px;text-align:center;font-size:22px;display:flex;align-items:center;justify-content:center;gap:10px}
+#pickGrid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:14px 14px 170px;align-content:start}
+#pickGrid .blk{width:100%;opacity:.5;transition:opacity .15s,transform .15s}
+#pickGrid .blk .face{font-size:min(8vw,34px)}
+#pickGrid .blk.sel{opacity:1;transform:scale(1.04)}
+#pickGrid .blk.sel::after{content:"✓";position:absolute;top:-8px;right:-8px;width:26px;height:26px;border-radius:50%;background:#5fae3e;color:#fff;font-size:17px;display:grid;place-items:center;box-shadow:0 2px 0 rgba(0,0,0,.25)}
+.pickbar{position:fixed;left:0;right:0;bottom:76px;display:flex;gap:14px;justify-content:center;z-index:5}
+.pickbar .pbtn{font-size:24px;padding:14px 22px}
 /* escrever */
 .wgroups{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
 .wgroup{display:flex;gap:4px}
@@ -207,8 +216,8 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
       <button class="card" data-mode="silabas"><div class="art px" data-tex="plank"><span>🔨</span></div><div class="lbl">Sílabas</div></button>
       <button class="card" data-mode="palavras"><div class="art px" data-tex="leaves"><span>🐸</span></div><div class="lbl">Palavras</div></button>
       <button class="card" data-mode="ler"><div class="art px" data-tex="roof"><span>🎤</span></div><div class="lbl">Ler</div></button>
-      <button class="card" data-mode="escrever" id="cardWrite" style="display:none"><div class="art px" data-tex="glass"><span>✏️</span></div><div class="lbl">Escrever</div></button>
-      <button class="card wide" data-mode="mundo" id="cardWorld"><div class="art px" data-tex="grass"><span>🏠</span></div><div class="lbl">Minha casa</div></button>
+      <button class="card" data-mode="escrever" id="cardWrite"><div class="art px" data-tex="glass"><span>✏️</span></div><div class="lbl">Escrever</div></button>
+      <button class="card" data-mode="mundo" id="cardWorld"><div class="art px" data-tex="grass"><span>🏠</span></div><div class="lbl">Minha casa</div></button>
     </div>
   </section>
 
@@ -225,6 +234,18 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     </div>
     <div id="craft"></div>
     <div id="opts"></div>
+  </section>
+
+  <!-- ESCOLHER O QUE TREINAR -->
+  <section id="pick" class="screen">
+    <div class="topbar">
+      <button class="icon goHome" aria-label="Início">⬅️</button>
+      <div class="grow"></div>
+      <button id="pickAll" class="icon" style="width:auto;padding:0 14px;font-size:18px">⭐ Todas</button>
+    </div>
+    <div class="bubble" id="pickTitle"></div>
+    <div id="pickGrid"></div>
+    <div class="pickbar"><button id="pickRand" class="pbtn brown">🎲 Surpresa</button><button id="pickGo" class="pbtn">▶ Jogar</button></div>
   </section>
 
   <!-- FIM DA RODADA -->
@@ -275,14 +296,12 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     <label><input type="checkbox" id="pFx"> Musiquinha de comemoração</label>
     <div class="row"><button id="pPet">🐶 Mudar o nome do cachorrinho</button></div>
 
-    <h3>Letras liberadas</h3>
+    <h3>Letras</h3>
     <div class="small">Verde = já sabe bem · amarelo = treinando · vermelho = está difícil. Números: acertos de primeira / erros.</div>
     <div id="pLetters" class="chips"></div>
-    <div class="row"><button id="pLmin">− Uma letra a menos</button><button id="pLplus">+ Liberar próxima</button></div>
 
-    <h3>Sílabas liberadas (consoantes)</h3>
+    <h3>Sílabas</h3>
     <div id="pSyl" class="chips"></div>
-    <div class="row"><button id="pSmin">− Uma a menos</button><button id="pSplus">+ Liberar próxima</button></div>
 
     <h3>Palavras</h3>
     <div id="pWords" class="small"></div>
@@ -294,7 +313,6 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 
     <h3>Escrever ✏️</h3>
     <div class="small" id="pWrite"></div>
-    <div class="row"><button id="pWriteToggle"></button></div>
 
     <h3>Resumo</h3>
     <div id="pSum" class="small"></div>
@@ -407,10 +425,10 @@ function buildState(total) { let i = 0, rem = total; while (rem >= cellsOf(build
 
 /* ================= ESTADO ================= */
 const KEY = 'thomas-letras-v1';
-const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{open:false, st:{}}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:''}});
+const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{st:{}}, pick:{letras:['A','E','I','O','U'], silabas:['B','P','M'], palavras:['B','P','M','L'], ler:['B','P','M','L'], escrever:['B','P','M','L']}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:''}});
 let S;
 try { S = Object.assign(defState(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = defState(); }
-['letters','syl','words','read','write','rounds','set'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
+['letters','syl','words','read','write','pick','rounds','set'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 function stat(group, key) { return S[group].st[key] || (S[group].st[key] = {ok:0, err:0}); }
 
@@ -543,7 +561,33 @@ function pickWeighted(items, wfn, avoid) {
   for (let i = 0; i < c.length; i++) { r -= ws[i]; if (r <= 0) return c[i]; }
   return c[c.length - 1];
 }
-function startMode(mode) { gen++; hush(); stopRec(); G = {mode, q:0, first:0, earned:0, last:null}; show('game'); renderProg(); nextQ(); }
+let PK = null; // {mode, sel:Set}
+function startMode(mode) {
+  gen++; hush(); stopRec(); G = null;
+  const isL = mode === 'letras', items = isL ? LETTERS : CONS;
+  PK = {mode, isL, items, sel: new Set((S.pick[mode] || []).filter(x => items.includes(x)))};
+  $('#pickTitle').innerHTML = `<span style="font-size:34px">${{letras:'⛏️', silabas:'🔨', palavras:'🐸', ler:'🎤', escrever:'✏️'}[mode]}</span> ${isL ? 'Quais letras hoje?' : 'Quais sílabas hoje?'}`;
+  $('#pickGrid').innerHTML = items.map((x, i) => `<button class="blk px" data-v="${x}" style="background-image:url(${TX[isL ? ORES[i % ORES.length] : 'plank']})"><span class="face">${isL ? x : x + 'A'}</span></button>`).join('');
+  $$('#pickGrid .blk').forEach(b => b.addEventListener('click', () => {
+    const v = b.dataset.v; actx();
+    if (PK.sel.has(v)) PK.sel.delete(v); else PK.sel.add(v);
+    paintPick(); hush();
+    if (PK.sel.has(v)) say(isL ? LN[v] : VOW.filter(x => !SKIP[v + x]).map(x => saySyl(v + x)).join(', '));
+  }));
+  paintPick(); show('pick');
+  say(isL ? 'Escolha as letras que você quer treinar hoje. Depois toque em jogar!' : 'Escolha as sílabas que você quer treinar hoje. Depois toque em jogar!');
+}
+function paintPick() { $$('#pickGrid .blk').forEach(b => b.classList.toggle('sel', PK.sel.has(b.dataset.v))); }
+$('#pickAll').addEventListener('click', () => { actx(); const all = PK.sel.size === PK.items.length; PK.sel = new Set(all ? [] : PK.items); paintPick(); hush(); say(all ? 'Nenhuma.' : 'Todas!'); });
+$('#pickRand').addEventListener('click', () => { actx(); PK.sel = new Set(shuffle(PK.items).slice(0, PK.isL ? 4 : 3)); paintPick(); hush(); say('Surpresa! ' + [...PK.sel].map(x => PK.isL ? LN[x] : saySyl(x + 'A')).join(', ')); });
+$('#pickGo').addEventListener('click', () => {
+  actx();
+  if (!PK.sel.size) { hush(); say(PK.isL ? 'Escolha pelo menos uma letra!' : 'Escolha pelo menos uma sílaba!'); return; }
+  const sel = PK.items.filter(x => PK.sel.has(x));
+  S.pick[PK.mode] = sel; save();
+  beginRound(PK.mode, sel);
+});
+function beginRound(mode, sel) { gen++; hush(); stopRec(); G = {mode, sel, q:0, first:0, earned:0, last:null}; show('game'); renderProg(); nextQ(); }
 function renderProg() { $('#prog').innerHTML = Array.from({length: ROUND}, (_, i) => `<i class="${i < G.q ? 'on' : ''}" style="${i < G.q ? `background-image:url(${TX.grass})` : ''}"></i>`).join(''); }
 function setPrompt(emoji, big) {
   $('#pEmoji').textContent = emoji || '';
@@ -710,21 +754,23 @@ async function selfRead() {
 
 /* --- Letras --- */
 function qLetter() {
-  const pool = LETTERS.slice(0, S.letters.n), newest = pool[pool.length - 1];
-  const L = pickWeighted(pool, l => { const st = stat('letters', l); return 1 + st.err * 1.2 + (st.ok < 3 ? 2 : 0) + (l === newest ? 1.5 : 0) - Math.min(st.ok, 8) * .08; }, G.last);
+  const pool = G.sel;
+  const L = pickWeighted(pool, l => { const st = stat('letters', l); return 1 + st.err * 1.2 + (st.ok < 3 ? 2 : 0) - Math.min(st.ok, 8) * .08; }, G.last);
   G.last = L;
-  const n = Math.min(optCount('letras'), pool.length);
-  const opts = [L, ...shuffle(pool.filter(x => x !== L)).slice(0, n - 1)];
+  const n = optCount('letras');
+  // distrações: primeiro das letras escolhidas; se faltar, de outras letras
+  const others = [...shuffle(pool.filter(x => x !== L)), ...shuffle(LETTERS.filter(x => !pool.includes(x)))];
+  const opts = [L, ...others.slice(0, n - 1)];
   G.cur = {answer: L, key: L, prompt: () => `Encontre a letra ${LN[L]}. ${LN[L]}, de ${LW[L][0]}.`};
   setPrompt(LW[L][1], null); // só a figura: a letra não aparece, para ele não só copiar o formato
   setOptions(shuffle(opts), false);
 }
 
 /* --- Sílabas --- */
-function sylPool() { const out = []; CONS.slice(0, S.syl.n).forEach(c => VOW.forEach(v => { if (!SKIP[c + v]) out.push(c + v); })); return out; }
+function sylPool() { const out = []; G.sel.forEach(c => VOW.forEach(v => { if (!SKIP[c + v]) out.push(c + v); })); return out; }
 function qSyl() {
-  const pool = sylPool(), newest = CONS[S.syl.n - 1];
-  const s = pickWeighted(pool, x => { const st = stat('syl', x); return 1 + st.err * 1.2 + (st.ok < 2 ? 1.5 : 0) + (x[0] === newest ? 1.5 : 0) - Math.min(st.ok, 8) * .08; }, G.last);
+  const pool = sylPool();
+  const s = pickWeighted(pool, x => { const st = stat('syl', x); return 1 + st.err * 1.2 + (st.ok < 2 ? 1.5 : 0) - Math.min(st.ok, 8) * .08; }, G.last);
   G.last = s;
   const st = stat('syl', s), c = s[0], v = s[1];
   const n = optCount('silabas');
@@ -749,7 +795,7 @@ function qSyl() {
 /* --- Palavras --- */
 /* --- Escrever (ditado) --- */
 function writeReady() { const sum = o => Object.values(o).reduce((a, x) => a + (x.ok || 0), 0); return sum(S.words.st) + sum(S.read.st) >= 10; }
-function renderWriteCard() { const open = !!S.write.open; $('#cardWrite').style.display = open ? '' : 'none'; $('#cardWorld').classList.toggle('wide', !open); }
+
 function qWrite() {
   const pool = wordPool();
   const w = pickWeighted(pool, x => { const st = stat('write', x[0]); return 1 + st.err + (st.ok < 1 ? 1.5 : 0) - Math.min(st.ok, 6) * .1; }, G.last);
@@ -758,7 +804,7 @@ function qWrite() {
   const sylOf = []; syls.forEach((sy, i) => [...sy].forEach(() => sylOf.push(i)));
   const uniq = [...new Set(word)];
   const nKeys = S.rounds.escrever >= 3 ? 9 : 6;
-  let dpool = LETTERS.slice(0, Math.max(S.letters.n, 10)).filter(l => !uniq.includes(l));
+  let dpool = LETTERS.filter(l => !uniq.includes(l) && !'KWYHQX'.includes(l));
   const keys = shuffle([...uniq, ...shuffle(dpool).slice(0, Math.max(0, nKeys - uniq.length))]);
   G.cur = {type:'write', word, syls, emoji, sylOf, pos:0, key: word, hadErr:false,
     prompt: () => { const c = G.cur, sy = saySyl(c.syls[c.sylOf[c.pos]]); return c.pos === 0 ? `Escreva: ${word.toLowerCase()}. Primeiro: ${sy}.` : `${word.toLowerCase()}. Agora: ${sy}.`; }};
@@ -807,9 +853,11 @@ async function pickWrite(btn, val) {
 }
 
 function wordPool() {
-  const cs = new Set(CONS.slice(0, S.syl.n));
-  let p = WORDS.filter(w => (w[1].length === 2 || S.syl.n >= 6) && w[1].every(sy => sy.length === 1 || cs.has(sy[0])));
-  if (p.length < 5) p = WORDS.slice(0, 8);
+  const cs = new Set(G.sel);
+  // primeiro, palavras feitas só com as sílabas escolhidas; se forem poucas, palavras que tenham pelo menos uma delas
+  let p = WORDS.filter(w => w[1].every(sy => sy.length === 1 || cs.has(sy[0])));
+  if (p.length < 4) p = WORDS.filter(w => w[1].some(sy => sy.length > 1 && cs.has(sy[0])));
+  if (p.length < 4) p = [...p, ...shuffle(WORDS.filter(w => !p.includes(w) && w[1].length === 2)).slice(0, 4 - p.length)];
   return p;
 }
 function qWord() {
@@ -931,16 +979,6 @@ async function endRound() {
   G.earned += 2; S.blocks += 2;
   S.rounds[mode]++;
   let unlocked = null, kind = '';
-  const good = G.first >= 4;
-  if (mode === 'letras') {
-    S.letters.good = good ? S.letters.good + 1 : 0;
-    if (S.letters.good >= 2 && S.letters.n < LETTERS.length) { S.letters.n++; S.letters.good = 0; unlocked = LETTERS[S.letters.n - 1]; kind = 'letra'; }
-  } else if (mode === 'silabas') {
-    S.syl.good = good ? S.syl.good + 1 : 0;
-    if (S.syl.good >= 2 && S.syl.n < CONS.length) { S.syl.n++; S.syl.good = 0; unlocked = CONS[S.syl.n - 1]; kind = 'silaba'; }
-  } else if ((mode === 'palavras' || mode === 'ler') && !S.write.open && writeReady()) {
-    S.write.open = true; unlocked = '✏️'; kind = 'jogo'; renderWriteCard();
-  }
   save();
   show('end');
   $('#eGain').textContent = G.earned;
@@ -954,7 +992,7 @@ async function endRound() {
   if (buildState(S.blocks).idx > before) await say('Sua construção está quase pronta! Vamos ver?');
   else await say('Vamos colocar os blocos na sua casa?');
 }
-$('#eAgain').addEventListener('click', () => { if (G) startMode(G.mode); else goHome(); });
+$('#eAgain').addEventListener('click', () => { if (G) beginRound(G.mode, G.sel); else goHome(); });
 $('#eWorld').addEventListener('click', openWorld);
 
 /* ================= MUNDO ================= */
@@ -1044,8 +1082,8 @@ function renderParent() {
   $('#pRate').value = S.set.rate; $('#pRateV').textContent = Math.round(S.set.rate * 100) + '%';
   $('#pOpts').value = String(S.set.opts); $('#pFx').checked = !!S.set.fx;
   $('#pVoice').textContent = !('speechSynthesis' in window) ? 'Este aparelho não tem voz de leitura.' : voice ? `Voz usada: ${voice.name} (${voice.lang})` : 'Não achei voz em português neste aparelho. No Android, instale/ative "Google Texto para voz" em português.';
-  $('#pLetters').innerHTML = LETTERS.slice(0, S.letters.n).map(l => chip(l, S.letters.st[l])).join('') + `<div class="chip" style="opacity:.5">${LETTERS[S.letters.n] || ''}<small>próxima</small></div>`;
-  $('#pSyl').innerHTML = CONS.slice(0, S.syl.n).map(c => {
+  $('#pLetters').innerHTML = LETTERS.map(l => chip(l, S.letters.st[l])).join('');
+  $('#pSyl').innerHTML = CONS.map(c => {
     const a = VOW.filter(v => !SKIP[c + v]).map(v => S.syl.st[c + v]).filter(Boolean);
     return chip(c + '·', a.length ? {ok: a.reduce((s, x) => s + x.ok, 0), err: a.reduce((s, x) => s + x.err, 0)} : null);
   }).join('');
@@ -1059,13 +1097,11 @@ function renderParent() {
   const rs = Object.entries(S.read.st);
   $('#pRead').innerHTML = rs.length ? 'Leu de primeira / precisou de ajuda: ' + rs.filter(([, s]) => s.ok + s.err).map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : 'Ainda não jogou Ler.';
   const wst = Object.entries(S.write.st).filter(([, s]) => s.ok + s.err);
-  $('#pWrite').innerHTML = (S.write.open ? 'Liberado. ' : 'Ainda não liberado: abre sozinho quando ele somar 10 palavras certas de primeira em Palavras e Ler. ') + (wst.length ? 'Escreveu de primeira / com erros: ' + wst.map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : '');
-  $('#pWriteToggle').textContent = S.write.open ? 'Esconder o jogo Escrever' : 'Liberar o jogo Escrever agora';
+  $('#pWrite').innerHTML = wst.length ? 'Escreveu de primeira / com erros: ' + wst.map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : 'Ainda não jogou Escrever.';
   const bs = buildState(S.blocks);
-  $('#pSum').innerHTML = `Blocos ganhos: ${S.blocks} · Construções terminadas: ${bs.idx}<br>Rodadas: Letras ${S.rounds.letras} · Sílabas ${S.rounds.silabas} · Palavras ${S.rounds.palavras} · Ler ${S.rounds.ler} · Escrever ${S.rounds.escrever}<br>Uma letra/sílaba nova é liberada sozinha depois de 2 rodadas seguidas com 4 ou mais acertos de primeira.`;
+  $('#pSum').innerHTML = `Blocos ganhos: ${S.blocks} · Construções terminadas: ${bs.idx}<br>Rodadas: Letras ${S.rounds.letras} · Sílabas ${S.rounds.silabas} · Palavras ${S.rounds.palavras} · Ler ${S.rounds.ler} · Escrever ${S.rounds.escrever}<br>Tudo está liberado: no começo de cada jogo, o Thomas escolhe as letras ou sílabas do dia (a última escolha fica marcada).`;
 }
 function openParent() { hush(); renderParent(); $('#parent').classList.remove('hidden'); }
-$('#pWriteToggle').addEventListener('click', () => { S.write.open = !S.write.open; save(); renderWriteCard(); renderParent(); });
 $('#pPet').addEventListener('click', () => { $('#parent').classList.add('hidden'); openNameBox(); });
 $('#pClose').addEventListener('click', () => { $('#parent').classList.add('hidden'); });
 $('#pRate').addEventListener('input', e => { S.set.rate = +e.target.value; save(); $('#pRateV').textContent = Math.round(S.set.rate * 100) + '%'; });
@@ -1073,10 +1109,6 @@ $('#pTest').addEventListener('click', () => { actx(); hush(); say('Oi, Thomas! B
 $('#pOpts').addEventListener('change', e => { S.set.opts = e.target.value; save(); });
 $('#pFx').addEventListener('change', e => { S.set.fx = e.target.checked; save(); });
 $('#pMic').addEventListener('change', e => { S.set.mic = e.target.checked; if (S.set.mic) micBlocked = false; save(); renderParent(); });
-$('#pLplus').addEventListener('click', () => { if (S.letters.n < LETTERS.length) S.letters.n++; S.letters.good = 0; save(); renderParent(); });
-$('#pLmin').addEventListener('click', () => { if (S.letters.n > 2) S.letters.n--; S.letters.good = 0; save(); renderParent(); });
-$('#pSplus').addEventListener('click', () => { if (S.syl.n < CONS.length) S.syl.n++; S.syl.good = 0; save(); renderParent(); });
-$('#pSmin').addEventListener('click', () => { if (S.syl.n > 1) S.syl.n--; S.syl.good = 0; save(); renderParent(); });
 let resetArm = 0;
 $('#pReset').addEventListener('click', e => {
   if (Date.now() - resetArm < 4000) { const set = S.set; S = defState(); S.set = set; save(); updateCounter(); renderParent(); e.target.textContent = 'Progresso zerado'; resetArm = 0; return; }
@@ -1121,10 +1153,9 @@ $('#startBtn').addEventListener('click', () => {
   else say(S.blocks ? `Oi, Thomas! É o ${S.set.pet}! Que bom te ver! Escolha um jogo.` : `Oi, Thomas! Meu nome é ${S.set.pet}. Vamos aprender as letras e construir uma casa juntos? Escolha um jogo.`);
 });
 updateCounter();
-renderWriteCard();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · jogo Escrever (ditado)';
+const VERSAO = '12/nov · tudo liberado: ele escolhe letras e sílabas do dia';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
