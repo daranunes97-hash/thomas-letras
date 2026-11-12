@@ -533,6 +533,15 @@ function nextQ() {
   say(G.cur.prompt());
 }
 
+/* --- falar a sílaba montando as letras: "ésse mais a, dá sa!" --- */
+function sylParts(s) { return s.length === 1 ? VS[s] + '!' : `${LN[s[0]]} mais ${VS[s[1]]}, dá ${saySyl(s)}!`; }
+async function showParts(btn, s) {
+  const f = btn.querySelector('.face');
+  if (s.length > 1) f.innerHTML = `<span style="font-size:.78em;white-space:nowrap">${s[0]}<span style="opacity:.55">+</span>${s[1]}</span>`;
+  await say(sylParts(s));
+  if (btn.isConnected) { f.textContent = s; btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop'); }
+}
+
 /* --- Ler em voz alta --- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let micBlocked = false, rec = null;
@@ -572,7 +581,7 @@ function qRead() {
   G.cur = {type:'read', word, syls, emoji, key: word, help: 0, prompt: () => G.cur.help >= 2 ? `Escute: ${word.toLowerCase()}. Agora você!` : useMic() ? 'Leia esta palavra em voz alta, e toque no microfone.' : 'Leia esta palavra em voz alta. Depois toque no botão verde.'};
   setPrompt('❓', null);
   $('#craft').innerHTML = `<div class="readrow">${syls.map((s, i) => `<button class="blk wide px rsyl${useMic() ? '' : ' tap'}" data-i="${i}" style="background-image:url(${TX.plank})"><span class="face">${s}</span></button>`).join('')}</div>`;
-  $$('.rsyl').forEach(b => b.addEventListener('click', () => { if (!G || G.lock) return; hush(); b.classList.remove('wiggle'); void b.offsetWidth; b.classList.add('wiggle'); say(saySyl(syls[+b.dataset.i])); }));
+  $$('.rsyl').forEach(b => b.addEventListener('click', () => { if (!G || G.lock) return; hush(); b.classList.remove('wiggle'); void b.offsetWidth; b.classList.add('wiggle'); showParts(b, syls[+b.dataset.i]); }));
   renderReadButtons();
 }
 function renderReadButtons() {
@@ -617,7 +626,7 @@ async function readMiss(g) {
     // ajuda 2: modelar a palavra inteira
     $$('.rsyl').forEach(b => b.classList.remove('lit'));
     setPrompt(cur.emoji, null); $('#pEmoji').classList.add('pop');
-    for (let i = 0; i < cur.syls.length; i++) { if (g !== gen) return; const b = $(`.rsyl[data-i="${i}"]`); b.classList.add('lit'); await say(saySyl(cur.syls[i])); b.classList.remove('lit'); }
+    for (let i = 0; i < cur.syls.length; i++) { if (g !== gen) return; const b = $(`.rsyl[data-i="${i}"]`); b.classList.add('lit'); await showParts(b, cur.syls[i]); b.classList.remove('lit'); }
     if (g !== gen) return;
     await say(`${cur.word.toLowerCase()}! Agora você: fale ${cur.word.toLowerCase()}!`);
   } else {
@@ -654,7 +663,7 @@ async function selfRead() {
   const g = gen, cur = G.cur; G.lock = true; actx(); hush();
   setPrompt(cur.emoji, null); $('#pEmoji').classList.add('pop');
   petAnim('hop'); setTimeout(sChime, 100);
-  for (let i = 0; i < cur.syls.length; i++) { if (g !== gen) return; const b = $(`.rsyl[data-i="${i}"]`); b.classList.add('lit'); await say(saySyl(cur.syls[i])); b.classList.remove('lit'); }
+  for (let i = 0; i < cur.syls.length; i++) { if (g !== gen) return; const b = $(`.rsyl[data-i="${i}"]`); b.classList.add('lit'); await showParts(b, cur.syls[i]); b.classList.remove('lit'); }
   if (g !== gen) return;
   G.earned += 2; S.blocks += 2; stat('read', cur.word).ok++; save(); flyBlocks($('#pEmoji'), 2);
   G.first++; G.q++; renderProg(); showPraise('Você leu!');
@@ -687,7 +696,7 @@ function qSyl() {
   setPrompt('', null);
   if (craft) {
     const vs = VOW.filter(x => x !== v && !SKIP[c + x]);
-    G.cur = {type:'craft', answer: v, key: s, c, v, s, prompt: () => `Vamos fazer: ${saySyl(s)}. ${LN[c]} com qual letra faz ${saySyl(s)}?`};
+    G.cur = {type:'craft', answer: v, key: s, c, v, s, prompt: () => `Vamos fazer: ${saySyl(s)}. ${LN[c]} mais qual letra dá ${saySyl(s)}?`};
     $('#craft').innerHTML = `<div class="blk cslot px" style="background-image:url(${TX.plank})"><span class="face">${c}</span></div><span class="op">+</span><div class="blk cslot empty" id="cs2"><span class="face">?</span></div><span class="op">=</span><div class="blk cslot cres px" id="cres" style="background-image:url(${TX.plank})"><span class="face">?</span></div>`;
     setOptions(shuffle([v, ...shuffle(vs).slice(0, n - 1)]), false);
   } else {
@@ -746,7 +755,7 @@ async function miss(btn, val) {
   else if (G.cur.type === 'craft') {
     const made = G.cur.c + val;
     const cres = $('#cres .face'); if (cres) { cres.innerHTML = `<i class="ghost">${made}</i>`; }
-    line += G.tries >= 2 ? `${LN[G.cur.c]} com ${VS[G.cur.v]} faz ${saySyl(G.cur.s)}.` : `${LN[G.cur.c]} com ${VS[val]} faz ${saySyl(made)}. Nós queremos ${saySyl(G.cur.s)}.`;
+    line += G.tries >= 2 ? `${LN[G.cur.c]} mais ${VS[G.cur.v]} dá ${saySyl(G.cur.s)}.` : `${LN[G.cur.c]} mais ${VS[val]} dá ${saySyl(made)}. Nós queremos ${saySyl(G.cur.s)}.`;
     setTimeout(() => { if (g === gen && cres && G && G.tries > 0) cres.innerHTML = '?'; }, 2200);
   }
   else line += G.tries >= 2 ? `${saySyl(G.cur.s)}.` : `Essa é ${saySyl(val)}. Procure ${saySyl(G.cur.s)}.`;
@@ -768,7 +777,7 @@ async function win(btn) {
     const cs2 = $('#cs2'), cres = $('#cres');
     cs2.classList.remove('empty'); cs2.classList.add('px', 'pop'); cs2.style.backgroundImage = `url(${TX.plank})`; cs2.querySelector('.face').textContent = G.cur.v;
     setTimeout(() => { if (g !== gen) return; cres.querySelector('.face').textContent = G.cur.s; cres.classList.add('pop'); }, 350);
-    line = `${LN[G.cur.c]} com ${VS[G.cur.v]}: ${saySyl(G.cur.s)}!`;
+    line = sylParts(G.cur.s);
   } else line = `${saySyl(G.cur.s)}!`;
   const i = Math.floor(Math.random() * PRAISE.length);
   showPraise(first ? PRAISE_TXT[i] : 'Isso! Achou!');
@@ -799,7 +808,7 @@ async function pickWord(btn, val) {
   if (cur.idx < cur.syls.length) {
     $(`.wslot[data-i="${cur.idx}"]`).classList.add('next');
     G.tries = 0;
-    await say(`${saySyl(val)}! Agora: ${saySyl(cur.syls[cur.idx])}.`);
+    await say(`${sylParts(val)} Agora: ${saySyl(cur.syls[cur.idx])}.`);
     return;
   }
   // palavra completa
@@ -956,7 +965,7 @@ function renderParent() {
 function openParent() { hush(); renderParent(); $('#parent').classList.remove('hidden'); }
 $('#pClose').addEventListener('click', () => { $('#parent').classList.add('hidden'); });
 $('#pRate').addEventListener('input', e => { S.set.rate = +e.target.value; save(); $('#pRateV').textContent = Math.round(S.set.rate * 100) + '%'; });
-$('#pTest').addEventListener('click', () => { actx(); hush(); say('Oi, Thomas! Bê com a: ba!'); });
+$('#pTest').addEventListener('click', () => { actx(); hush(); say('Oi, Thomas! Bê mais a, dá ba!'); });
 $('#pOpts').addEventListener('change', e => { S.set.opts = e.target.value; save(); });
 $('#pFx').addEventListener('change', e => { S.set.fx = e.target.checked; save(); });
 $('#pMic').addEventListener('change', e => { S.set.mic = e.target.checked; if (S.set.mic) micBlocked = false; save(); renderParent(); });
@@ -982,7 +991,7 @@ $('#startBtn').addEventListener('click', () => {
 updateCounter();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · jogo Ler com microfone';
+const VERSAO = '12/nov · sílaba falada letra por letra';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
