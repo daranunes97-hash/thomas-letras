@@ -149,6 +149,7 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 .blk.sm{width:76px}
 .blk.sm .face{font-size:40px}
 .blk.used{visibility:hidden}
+.blk.off{opacity:.3;filter:grayscale(1);pointer-events:none}
 .ghost{color:rgba(45,36,22,.22);font-style:normal}
 .op{font-size:40px;color:#fff;text-shadow:0 3px 0 rgba(0,0,0,.25)}
 .cslot{width:min(22vw,92px)}
@@ -957,14 +958,15 @@ async function pickWrite(btn, val) {
   if (val !== need) {
     G.tries++; c.hadErr = true; stat('write', c.word).err++; save();
     btn.classList.remove('wiggle'); void btn.offsetWidth; btn.classList.add('wiggle'); petAnim('tilt');
-    const right = correctBtn(); if (right) { right.classList.remove('hint1','hint2'); right.classList.add(G.tries >= 2 ? 'hint2' : 'hint1'); }
+    // no Escrever o jogo NÃO mostra a letra certa: só apaga a letra errada que ele tocou, até acertar
+    btn.classList.add('off');
     G.lock = true; setTimeout(() => { if (g === gen && G) G.lock = false; }, 450);
     hush();
-    await say(G.tries >= 2 ? `É esse aqui, ó! A letra ${LN[need]}.` : `Essa é a letra ${LN[val]}. Escute de novo: ${saySyl(syl)}.`);
+    await say(`Essa é a letra ${LN[val]}. Escute de novo: ${saySyl(syl)}.`);
     return;
   }
   hush(); sPlace(); G.tries = 0;
-  $$('#opts .blk').forEach(b => b.classList.remove('hint1','hint2'));
+  $$('#opts .blk').forEach(b => b.classList.remove('hint1','hint2','off'));
   const slot = $(`.lslot[data-i="${c.pos}"]`);
   slot.textContent = val; slot.classList.remove('next'); slot.classList.add('filled','pop');
   btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
@@ -1623,7 +1625,7 @@ updateCounter();
 })();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · ajuda para instalar';
+const VERSAO = '12/nov · Escrever sem mostrar a resposta';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
