@@ -63,6 +63,15 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 .card.wide{grid-column:span 2;min-height:120px;flex-direction:row}
 .card.wide .art{min-height:0}
 .card.wide .lbl{display:grid;place-items:center;flex:1}
+/* escrever */
+.wgroups{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+.wgroup{display:flex;gap:4px}
+.lslot{width:min(13vw,56px);height:min(16vw,68px);border-radius:6px;border:4px dashed rgba(255,255,255,.95);display:grid;place-items:center;font-size:min(10vw,42px);background:rgba(255,255,255,.25)}
+.lslot.next{border-color:#ffe066;background:rgba(255,240,180,.5)}
+.lslot.filled{border:none;background:var(--cream);box-shadow:0 4px 0 rgba(0,0,0,.18)}
+#opts.keys{gap:12px;max-width:420px;margin:0 auto}
+#opts.keys .blk{width:min(24vw,92px)}
+#opts.keys .blk .face{font-size:min(11vw,46px)}
 /* ler em voz alta */
 .mic{width:140px;height:140px;border-radius:50%;border:none;background:#5fae3e;color:#fff;font-size:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:inset 0 -8px 0 rgba(0,0,0,.2),0 7px 0 #2f5e22;position:relative}
 .mic span{font-size:20px;margin-top:2px}
@@ -80,7 +89,7 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
 .card .lbl{font-size:22px;padding:8px 6px 10px}
 #petBtn{border:none;background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:2px}
 #petBtn:active{transform:translateY(2px)}
-#petName{background:#fff;border-radius:10px;padding:2px 10px;font-size:16px;box-shadow:0 2px 0 rgba(0,0,0,.12);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#petName{background:#fff;border-radius:10px;padding:2px 10px;font-size:16px;box-shadow:0 2px 0 rgba(0,0,0,.12);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #petName.ask{background:#ffe066;animation:bob 1.2s ease-in-out infinite}
 #nameBox .panel{border-radius:16px;margin:auto 12px;font-family:inherit;text-align:center}
 #nameBox canvas{width:110px;height:110px;image-rendering:pixelated}
@@ -198,7 +207,8 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
       <button class="card" data-mode="silabas"><div class="art px" data-tex="plank"><span>🔨</span></div><div class="lbl">Sílabas</div></button>
       <button class="card" data-mode="palavras"><div class="art px" data-tex="leaves"><span>🐸</span></div><div class="lbl">Palavras</div></button>
       <button class="card" data-mode="ler"><div class="art px" data-tex="roof"><span>🎤</span></div><div class="lbl">Ler</div></button>
-      <button class="card wide" data-mode="mundo"><div class="art px" data-tex="grass"><span>🏠</span></div><div class="lbl">Minha casa</div></button>
+      <button class="card" data-mode="escrever" id="cardWrite" style="display:none"><div class="art px" data-tex="glass"><span>✏️</span></div><div class="lbl">Escrever</div></button>
+      <button class="card wide" data-mode="mundo" id="cardWorld"><div class="art px" data-tex="grass"><span>🏠</span></div><div class="lbl">Minha casa</div></button>
     </div>
   </section>
 
@@ -281,6 +291,10 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
     <label><input type="checkbox" id="pMic"> Usar o microfone para ouvir o Thomas ler</label>
     <div class="small" id="pMicInfo"></div>
     <div id="pRead" class="small"></div>
+
+    <h3>Escrever ✏️</h3>
+    <div class="small" id="pWrite"></div>
+    <div class="row"><button id="pWriteToggle"></button></div>
 
     <h3>Resumo</h3>
     <div id="pSum" class="small"></div>
@@ -393,10 +407,10 @@ function buildState(total) { let i = 0, rem = total; while (rem >= cellsOf(build
 
 /* ================= ESTADO ================= */
 const KEY = 'thomas-letras-v1';
-const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, rounds:{letras:0, silabas:0, palavras:0, ler:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:''}});
+const defState = () => ({blocks:0, seen:0, letters:{n:5, good:0, st:{}}, syl:{n:1, good:0, st:{}}, words:{st:{}}, read:{st:{}}, write:{open:false, st:{}}, rounds:{letras:0, silabas:0, palavras:0, ler:0, escrever:0}, set:{rate:0.85, opts:'auto', fx:true, mic:true, pet:''}});
 let S;
 try { S = Object.assign(defState(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = defState(); }
-['letters','syl','words','read','rounds','set'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
+['letters','syl','words','read','write','rounds','set'].forEach(k => S[k] = Object.assign(defState()[k], S[k] || {}));
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 function stat(group, key) { return S[group].st[key] || (S[group].st[key] = {ok:0, err:0}); }
 
@@ -539,6 +553,7 @@ function setPrompt(emoji, big) {
   else { pb.innerHTML = ''; pb.style.display = 'none'; }
 }
 function setOptions(list, wide) {
+  $('#opts').classList.toggle('keys', !!(G && G.cur && G.cur.type === 'write'));
   const ores = shuffle(ORES);
   $('#opts').innerHTML = list.map((o, i) => `<button class="blk px${wide ? ' wide' : ''}" data-val="${o}" style="background-image:url(${TX[ores[i % ores.length]]})"><span class="face">${o}</span></button>`).join('');
   $$('#opts .blk').forEach(b => b.addEventListener('click', () => onPick(b)));
@@ -547,8 +562,9 @@ function nextQ() {
   if (!G) return;
   if (G.q >= ROUND) return endRound();
   G.tries = 0; G.lock = false; G.idled = false; lastTouch = Date.now();
+  $('#opts').classList.remove('keys');
   $('#craft').innerHTML = '';
-  if (G.mode === 'letras') qLetter(); else if (G.mode === 'silabas') qSyl(); else if (G.mode === 'ler') qRead(); else qWord();
+  if (G.mode === 'letras') qLetter(); else if (G.mode === 'silabas') qSyl(); else if (G.mode === 'ler') qRead(); else if (G.mode === 'escrever') qWrite(); else qWord();
   say(G.cur.prompt());
 }
 
@@ -731,6 +747,65 @@ function qSyl() {
 }
 
 /* --- Palavras --- */
+/* --- Escrever (ditado) --- */
+function writeReady() { const sum = o => Object.values(o).reduce((a, x) => a + (x.ok || 0), 0); return sum(S.words.st) + sum(S.read.st) >= 10; }
+function renderWriteCard() { const open = !!S.write.open; $('#cardWrite').style.display = open ? '' : 'none'; $('#cardWorld').classList.toggle('wide', !open); }
+function qWrite() {
+  const pool = wordPool();
+  const w = pickWeighted(pool, x => { const st = stat('write', x[0]); return 1 + st.err + (st.ok < 1 ? 1.5 : 0) - Math.min(st.ok, 6) * .1; }, G.last);
+  G.last = w;
+  const [word, syls, emoji] = w;
+  const sylOf = []; syls.forEach((sy, i) => [...sy].forEach(() => sylOf.push(i)));
+  const uniq = [...new Set(word)];
+  const nKeys = S.rounds.escrever >= 3 ? 9 : 6;
+  let dpool = LETTERS.slice(0, Math.max(S.letters.n, 10)).filter(l => !uniq.includes(l));
+  const keys = shuffle([...uniq, ...shuffle(dpool).slice(0, Math.max(0, nKeys - uniq.length))]);
+  G.cur = {type:'write', word, syls, emoji, sylOf, pos:0, key: word, hadErr:false,
+    prompt: () => { const c = G.cur, sy = saySyl(c.syls[c.sylOf[c.pos]]); return c.pos === 0 ? `Escreva: ${word.toLowerCase()}. Primeiro: ${sy}.` : `${word.toLowerCase()}. Agora: ${sy}.`; }};
+  setPrompt(emoji, null);
+  let k = 0;
+  $('#craft').innerHTML = `<div class="wgroups">${syls.map(sy => `<div class="wgroup">${[...sy].map(() => `<div class="lslot${k === 0 ? ' next' : ''}" data-i="${k++}"></div>`).join('')}</div>`).join('')}</div>`;
+  setOptions(keys, false);
+}
+async function pickWrite(btn, val) {
+  const g = gen, c = G.cur, need = c.word[c.pos], si = c.sylOf[c.pos], syl = c.syls[si];
+  if (val !== need) {
+    G.tries++; c.hadErr = true; stat('write', c.word).err++; save();
+    btn.classList.remove('wiggle'); void btn.offsetWidth; btn.classList.add('wiggle'); petAnim('tilt');
+    const right = correctBtn(); if (right) { right.classList.remove('hint1','hint2'); right.classList.add(G.tries >= 2 ? 'hint2' : 'hint1'); }
+    G.lock = true; setTimeout(() => { if (g === gen && G) G.lock = false; }, 450);
+    hush();
+    await say(G.tries >= 2 ? `É esse aqui, ó! A letra ${LN[need]}.` : `Essa é a letra ${LN[val]}. Escute de novo: ${saySyl(syl)}.`);
+    return;
+  }
+  hush(); sPlace(); G.tries = 0;
+  $$('#opts .blk').forEach(b => b.classList.remove('hint1','hint2'));
+  const slot = $(`.lslot[data-i="${c.pos}"]`);
+  slot.textContent = val; slot.classList.remove('next'); slot.classList.add('filled','pop');
+  btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
+  c.pos++;
+  const nextSlot = $(`.lslot[data-i="${c.pos}"]`); if (nextSlot) nextSlot.classList.add('next');
+  if (c.pos < c.word.length) {
+    if (c.sylOf[c.pos] !== si) await say(`${sylParts(syl)} Agora: ${saySyl(c.syls[c.sylOf[c.pos]])}.`);
+    else await say(LN[val]);
+    return;
+  }
+  // palavra completa
+  G.lock = true;
+  const first = !c.hadErr;
+  if (first) { G.first++; stat('write', c.word).ok++; }
+  petAnim('hop'); setTimeout(sChime, 100); confetti(14);
+  burst($('#craft'), ['#ffd84a','#5fae3e','#4fc3f7','#fff']);
+  G.earned += 3; S.blocks += 3; save(); flyBlocks($('#pEmoji'), 3);
+  const i = Math.floor(Math.random() * PRAISE.length);
+  showPraise(c.word);
+  G.q++; renderProg();
+  await say(`${sylParts(syl)} ${c.syls.map(saySyl).join('... ')}... ${c.word.toLowerCase()}! Você escreveu ${c.word.toLowerCase()}! ${PRAISE[i]}`);
+  if (g !== gen) return;
+  await wait(400);
+  if (g === gen) nextQ();
+}
+
 function wordPool() {
   const cs = new Set(CONS.slice(0, S.syl.n));
   let p = WORDS.filter(w => (w[1].length === 2 || S.syl.n >= 6) && w[1].every(sy => sy.length === 1 || cs.has(sy[0])));
@@ -750,12 +825,13 @@ function qWord() {
 }
 
 /* --- Toque nas opções --- */
-function correctBtn() { return $$('#opts .blk:not(.used)').find(b => b.dataset.val === (G.cur.type === 'word' ? G.cur.syls[G.cur.idx] : G.cur.answer)); }
+function correctBtn() { const c = G.cur; const want = c.type === 'word' ? c.syls[c.idx] : c.type === 'write' ? c.word[c.pos] : c.answer; return $$('#opts .blk:not(.used)').find(b => b.dataset.val === want); }
 function onPick(btn) {
   if (!G || G.lock || btn.classList.contains('used')) return;
   actx(); lastTouch = Date.now();
   const val = btn.dataset.val;
   if (G.cur.type === 'word') return pickWord(btn, val);
+  if (G.cur.type === 'write') return pickWrite(btn, val);
   if (val === G.cur.answer) win(btn); else miss(btn, val);
 }
 
@@ -862,15 +938,18 @@ async function endRound() {
   } else if (mode === 'silabas') {
     S.syl.good = good ? S.syl.good + 1 : 0;
     if (S.syl.good >= 2 && S.syl.n < CONS.length) { S.syl.n++; S.syl.good = 0; unlocked = CONS[S.syl.n - 1]; kind = 'silaba'; }
+  } else if ((mode === 'palavras' || mode === 'ler') && !S.write.open && writeReady()) {
+    S.write.open = true; unlocked = '✏️'; kind = 'jogo'; renderWriteCard();
   }
   save();
   show('end');
   $('#eGain').textContent = G.earned;
-  $('#eNew').innerHTML = unlocked ? `${kind === 'letra' ? 'Letra nova!' : 'Sílabas novas!'}<div class="blk px pop" style="background-image:url(${TX.oreY})"><span class="face">${unlocked}</span></div>` : '';
+  $('#eNew').innerHTML = unlocked ? `${kind === 'letra' ? 'Letra nova!' : kind === 'jogo' ? 'Jogo novo: Escrever!' : 'Sílabas novas!'}<div class="blk px pop" style="background-image:url(${TX.oreY})"><span class="face">${unlocked}</span></div>` : '';
   sFanfare(); confetti();
   await say(`Parabéns, Thomas! Você ganhou ${G.earned} blocos!`);
   if (g !== gen) return;
-  if (unlocked) await say(kind === 'letra' ? `E ganhou uma letra nova: ${LN[unlocked]}!` : `E agora vamos treinar com o ${LN[unlocked]}: ${VOW.filter(v => !SKIP[unlocked + v]).map(v => saySyl(unlocked + v)).join(', ')}!`);
+  if (unlocked && kind === 'jogo') await say('E sabe o que mais? Você está lendo tão bem que ganhou um jogo novo: Escrever! Agora você vai escrever as palavras que escutar!');
+  else if (unlocked) await say(kind === 'letra' ? `E ganhou uma letra nova: ${LN[unlocked]}!` : `E agora vamos treinar com o ${LN[unlocked]}: ${VOW.filter(v => !SKIP[unlocked + v]).map(v => saySyl(unlocked + v)).join(', ')}!`);
   if (g !== gen) return;
   if (buildState(S.blocks).idx > before) await say('Sua construção está quase pronta! Vamos ver?');
   else await say('Vamos colocar os blocos na sua casa?');
@@ -979,10 +1058,14 @@ function renderParent() {
     : 'Precisa de internet e da permissão do microfone. No Android, o Google transforma a fala em texto. O jogo é tolerante: se não entender, ajuda em etapas e nunca diz “errado”.';
   const rs = Object.entries(S.read.st);
   $('#pRead').innerHTML = rs.length ? 'Leu de primeira / precisou de ajuda: ' + rs.filter(([, s]) => s.ok + s.err).map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : 'Ainda não jogou Ler.';
+  const wst = Object.entries(S.write.st).filter(([, s]) => s.ok + s.err);
+  $('#pWrite').innerHTML = (S.write.open ? 'Liberado. ' : 'Ainda não liberado: abre sozinho quando ele somar 10 palavras certas de primeira em Palavras e Ler. ') + (wst.length ? 'Escreveu de primeira / com erros: ' + wst.map(([w, s]) => `${w} (${s.ok}/${s.err})`).join(' · ') : '');
+  $('#pWriteToggle').textContent = S.write.open ? 'Esconder o jogo Escrever' : 'Liberar o jogo Escrever agora';
   const bs = buildState(S.blocks);
-  $('#pSum').innerHTML = `Blocos ganhos: ${S.blocks} · Construções terminadas: ${bs.idx}<br>Rodadas: Letras ${S.rounds.letras} · Sílabas ${S.rounds.silabas} · Palavras ${S.rounds.palavras} · Ler ${S.rounds.ler}<br>Uma letra/sílaba nova é liberada sozinha depois de 2 rodadas seguidas com 4 ou mais acertos de primeira.`;
+  $('#pSum').innerHTML = `Blocos ganhos: ${S.blocks} · Construções terminadas: ${bs.idx}<br>Rodadas: Letras ${S.rounds.letras} · Sílabas ${S.rounds.silabas} · Palavras ${S.rounds.palavras} · Ler ${S.rounds.ler} · Escrever ${S.rounds.escrever}<br>Uma letra/sílaba nova é liberada sozinha depois de 2 rodadas seguidas com 4 ou mais acertos de primeira.`;
 }
 function openParent() { hush(); renderParent(); $('#parent').classList.remove('hidden'); }
+$('#pWriteToggle').addEventListener('click', () => { S.write.open = !S.write.open; save(); renderWriteCard(); renderParent(); });
 $('#pPet').addEventListener('click', () => { $('#parent').classList.add('hidden'); openNameBox(); });
 $('#pClose').addEventListener('click', () => { $('#parent').classList.add('hidden'); });
 $('#pRate').addEventListener('input', e => { S.set.rate = +e.target.value; save(); $('#pRateV').textContent = Math.round(S.set.rate * 100) + '%'; });
@@ -1038,9 +1121,10 @@ $('#startBtn').addEventListener('click', () => {
   else say(S.blocks ? `Oi, Thomas! É o ${S.set.pet}! Que bom te ver! Escolha um jogo.` : `Oi, Thomas! Meu nome é ${S.set.pet}. Vamos aprender as letras e construir uma casa juntos? Escolha um jogo.`);
 });
 updateCounter();
+renderWriteCard();
 
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · Ler: sílabas falam antes e microfone sempre visível';
+const VERSAO = '12/nov · jogo Escrever (ditado)';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
