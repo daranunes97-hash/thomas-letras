@@ -389,6 +389,8 @@ button{font-family:inherit;font-weight:900;color:inherit;cursor:pointer}
   <canvas class="pet" id="petStart" width="12" height="12"></canvas>
   <div class="title" style="text-align:center">Mundo das Letras<br>do Thomas</div>
   <button id="startBtn" class="pbtn">▶ Jogar</button>
+  <button id="installBtn" class="pbtn brown" style="display:none;font-size:20px">📲 Instalar no celular</button>
+  <div id="installHelp" style="display:none;max-width:340px;background:#fff;border-radius:14px;padding:12px 16px;font-family:system-ui,sans-serif;font-size:16px;font-weight:600;line-height:1.4;text-align:left;box-shadow:0 4px 0 rgba(0,0,0,.12)"></div>
 </div>
 
 <script>
@@ -1587,8 +1589,41 @@ $('#startBtn').addEventListener('click', () => {
 });
 updateCounter();
 
+/* instalar como aplicativo */
+(function () {
+  const ua = navigator.userAgent || '';
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (standalone) return;
+  const help = $('#installHelp'), btn = $('#installBtn');
+  const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|; wv\)|Telegram/i.test(ua);
+  const ios = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (inApp) {
+    help.innerHTML = '📲 <b>Para instalar:</b> este link abriu dentro de outro app (WhatsApp, etc.).<br>Toque nos <b>3 pontinhos ⋮</b> lá em cima e escolha <b>“Abrir no Chrome”</b>' + (ios ? ' (no iPhone: <b>“Abrir no Safari”</b>)' : '') + '. Depois instale por lá.';
+    help.style.display = '';
+  } else if (ios) {
+    help.innerHTML = '📲 <b>Para instalar no iPhone:</b> abra no <b>Safari</b>, toque em <b>Compartilhar</b> (o quadrado com a seta ⬆️) e depois em <b>“Adicionar à Tela de Início”</b>.';
+    help.style.display = '';
+  } else {
+    help.innerHTML = '📲 <b>Para instalar:</b> no Chrome, toque nos <b>3 pontinhos ⋮</b> e escolha <b>“Instalar app”</b> ou <b>“Adicionar à tela inicial”</b>.';
+    help.style.display = '';
+  }
+  let deferred = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault(); deferred = e;
+    btn.style.display = ''; help.style.display = 'none';
+  });
+  btn.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (!deferred) return;
+    deferred.prompt();
+    try { await deferred.userChoice; } catch (er) {}
+    deferred = null; btn.style.display = 'none';
+  });
+  window.addEventListener('appinstalled', () => { btn.style.display = 'none'; help.innerHTML = '✅ Instalado! Agora abra pelo ícone do cachorrinho na tela do celular.'; help.style.display = ''; });
+})();
+
 /* funciona sem internet quando instalado (GitHub Pages) */
-const VERSAO = '12/nov · cidade com cadeados';
+const VERSAO = '12/nov · ajuda para instalar';
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
 }
